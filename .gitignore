@@ -1,0 +1,10 @@
+/target/
+/data/
+/*.zip
+*.log
+.DS_Store
+.env
+
+__pycache__/
+*.pyc
+node_modules/

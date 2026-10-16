@@ -1,0 +1,1 @@
+{"name":"apa-ui-qa","version":"1.0.0","private":true,"type":"module","scripts":{"test":"node ui-dom-test.mjs"},"devDependencies":{"jsdom":"26.1.0"}}

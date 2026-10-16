@@ -1,0 +1,51 @@
+package cn.finance.review;
+import java.util.*;
+import java.security.MessageDigest;
+import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import static cn.finance.review.Db.*;
+public final class Fields {
+ public static final List<String> AUTH=List.of("employeeId","userName","department","deptCode","personKind","employmentClass","userNamespace","permissionName","roleId","roleType","permissionType","description","startAt","expiresAt","authorizationId","application","appId","tenantId","sourceSystem");
+ public static final List<String> POINT=List.of("roleName","roleId","roleType","setName","setId","pointName","pointId","resourceType","subtype","confidence","evidence","application","appId","tenantId","sourceSystem");
+ public static final List<String> USER_DETAIL=List.of("employeeId","userName","department","permissionName","roleId","roleType","permissionType","description","startAt","expiresAt","authorizationId","application","appId","tenantId","sourceSystem");
+ public static final List<String> MATRIX_DETAIL=List.of("roleName","roleId","roleType","setName","setId","pointName","pointId","resourceType","subtype","application","appId","tenantId","sourceSystem");
+ public static final List<String> COMMON=List.of("ruleCode","checkName","risk","workflow","violation","advice","evidence","confidence");
+ public static final Map<String,List<String>> ALIASES=new LinkedHashMap<>();
+ public static final String[] PRODUCT_NAMES={"财经前台产品","账务交易产品","资金产品","税务产品","财报产品","财经法务产品","交易经营产品","资金收付安全产品","支付清算产品","财经预算预测产品","财经辅助","财经质量管理产品","财经助手产品","电商支付风控产品","管报数据产品","财经分析产品","业财数据产品","财经公共产品"};
+ public static final String[] ICONS={"layout","receipt","wallet","file","chart","scale","briefcase","shield","arrows","trend","grid","check","spark","lock","database","pie","layers","globe"};
+ public static final String[] RULE_NAMES={"IT人员不持有业务权限","业务人员不持有IT权限","业务管理员业务数据权限","业务管理员用户授权权限","业务非雇员权限控制","IT特权账号授权有效期","IT运维查询授权规范","权限矩阵职责冲突"};
+ static {
+  alias("employeeId","用户工号","工号","员工工号","员工编号","W3_ACCOUNT","LNAME");alias("userName","用户名称","用户姓名","姓名");alias("department","用户部门","部门","org_name");alias("deptCode","部门编码");alias("personKind","人员类别","人员分类");alias("employmentClass","是否雇员","雇员身份");alias("userNamespace","用户命名空间");
+  alias("permissionName","权限名称","角色","角色名称");alias("roleName","角色名称","角色");alias("roleId","角色ID","角色id");alias("roleType","角色类型");alias("permissionType","权限类型");alias("description","功能描述","角色描述");alias("startAt","启用时间","生效时间");alias("expiresAt","有效期","到期时间","失效时间");alias("authorizationId","授权ID","授权id","授权编号");
+  alias("application","所属应用","应用","app","应用名称");alias("appId","应用ID","应用编码");alias("tenantId","租户ID","租户");alias("sourceSystem","来源系统");alias("ruleCode","检查项","检查细项","所属检查项","来源检查项");alias("checkName","检查项名称","检查内容");alias("risk","风险等级");alias("workflow","处理状态","核实状态");alias("violation","违规明细说明","违规原因","违规说明");alias("advice","整改建议");alias("evidence","判定依据");alias("setName","权限集名称","权限集");alias("setId","权限集ID");alias("pointName","权限点名称","权限点");alias("pointId","权限点ID","权限点id");alias("resourceType","资源类型");alias("subtype","权限细分类型","权限细分类型标签");alias("confidence","置信度");alias("productName","所属产品","产品名称","产品");
+ }
+ static void alias(String key,String... values){List<String>a=new ArrayList<>(List.of(values));a.add(key);ALIASES.put(key,a);}
+ public static String label(String key){return ALIASES.getOrDefault(key,List.of(key)).get(0);}
+ public static List<String> columns(String type){List<String> out=new ArrayList<>();if(type.equals("AUTH"))out.addAll(AUTH);else if(type.equals("POINT"))out.addAll(POINT);else {out.addAll(COMMON);out.addAll(type.equals("USER_RISK")?USER_DETAIL:MATRIX_DETAIL);}return out;}
+ public static Map<String,Object> select(Map<String,?> row,List<String> keys){Map<String,Object> out=new LinkedHashMap<>();for(String k:keys)out.put(k,row.get(k));return out;}
+ public static Map<String,Object> normalize(Map<String,String> row,String type){Map<String,Object> m=new LinkedHashMap<>();for(String key:columns(type)){for(String alias:ALIASES.getOrDefault(key,List.of(key)))if(row.containsKey(alias)){m.put(key,row.get(alias).trim());break;}m.putIfAbsent(key,"");}for(String alias:ALIASES.get("productName"))if(row.containsKey(alias))m.put("productName",row.get(alias));
+  if(type.equals("AUTH")){if(str(m,"userNamespace").isBlank())m.put("userNamespace","employee");if(str(m,"personKind").isBlank())m.put("personKind","未知");if(str(m,"employmentClass").isBlank())m.put("employmentClass","未知");}
+  if(type.endsWith("RISK")){String code=str(m,"ruleCode").replaceFirst("^检查项\\s*","").trim().toLowerCase(Locale.ROOT);java.util.regex.Matcher match=java.util.regex.Pattern.compile("^(?:10|8)([a-f])").matcher(code);if(type.equals("MATRIX_RISK")&&match.find())code="8"+match.group(1);else if(type.equals("USER_RISK")){match=java.util.regex.Pattern.compile("^([1-7])(?:\\D|$)").matcher(code);if(match.find())code=match.group(1);}m.put("ruleCode",code);m.put("risk",str(m,"risk").replace("风险","").isBlank()?(type.equals("MATRIX_RISK")?"高":""):str(m,"risk").replace("风险",""));if(str(m,"workflow").isBlank())m.put("workflow",code.equals("7")?"待人工确认":"待核实");if(str(m,"checkName").isBlank()&&code.matches("[1-7]"))m.put("checkName",RULE_NAMES[Integer.parseInt(code)-1]);}
+  if(m.containsKey("confidence")){String c=str(m,"confidence");if(c.isBlank())m.put("confidence",null);else {try{double n=Double.parseDouble(c.replace("%",""));if(c.endsWith("%"))n/=100;if(!Double.isFinite(n)||n<0||n>1)throw new NumberFormatException();m.put("confidence",n);}catch(Exception e){throw new IllegalArgumentException("置信度应为0至1的小数或百分数");}}}
+  for(String k:List.of("startAt","expiresAt"))if(m.containsKey(k)&&!str(m,k).isBlank())m.put(k,date(str(m,k),k.equals("expiresAt")));
+  return m;
+ }
+ public static String date(String s,boolean expiry){if(expiry&&List.of("长期","永久","永久有效","长期有效","无期限").contains(s))return "长期";for(String f:List.of("uuuu-MM-dd","uuuu/M/d","M/d/uu","uuuu-MM-dd HH:mm:ss","uuuu/M/d H:mm:ss")){try{return LocalDate.parse(s,DateTimeFormatter.ofPattern(f).withResolverStyle(java.time.format.ResolverStyle.STRICT)).toString();}catch(Exception ignored){}}try{return java.time.OffsetDateTime.parse(s).toLocalDate().toString();}catch(Exception e){throw new IllegalArgumentException(label(expiry?"expiresAt":"startAt")+"不是有效日期");}}
+ public static List<String> validate(Map<String,Object> r,String type){List<String> e=new ArrayList<>();List<String> required=switch(type){case "AUTH"->List.of("employeeId","permissionName");case "POINT"->List.of("roleName","setName","pointId");case "USER_RISK"->List.of("employeeId","permissionName","ruleCode");default->List.of("ruleCode","roleName","setName","pointId");};for(String k:required)if(str(r,k).isBlank())e.add(label(k)+"不能为空");
+  Map<String,Integer> caps=Map.ofEntries(Map.entry("employeeId",150),Map.entry("userName",150),Map.entry("deptCode",100),Map.entry("personKind",50),Map.entry("employmentClass",50),Map.entry("userNamespace",100),Map.entry("permissionName",400),Map.entry("roleName",400),Map.entry("roleId",150),Map.entry("roleType",100),Map.entry("permissionType",100),Map.entry("authorizationId",200),Map.entry("application",200),Map.entry("appId",150),Map.entry("tenantId",150),Map.entry("sourceSystem",100),Map.entry("setName",400),Map.entry("setId",150),Map.entry("pointName",600),Map.entry("pointId",200),Map.entry("resourceType",100),Map.entry("subtype",100),Map.entry("checkName",400));for(var cap:caps.entrySet())if(str(r,cap.getKey()).length()>cap.getValue())e.add(label(cap.getKey())+"超出"+cap.getValue()+"字符限制");
+  for(var x:r.entrySet())if(x.getValue()!=null&&String.valueOf(x.getValue()).length()>(List.of("description","violation","advice","evidence").contains(x.getKey())?10000:1000))e.add(label(x.getKey())+"超出字段长度限制");
+  if(type.equals("USER_RISK")&&!str(r,"ruleCode").matches("[1-7]"))e.add("用户角色检查项应为1至7");if(type.equals("MATRIX_RISK")&&!str(r,"ruleCode").matches("8[a-f]"))e.add("矩阵检查细项应为8a至8f");
+  if(type.endsWith("RISK")&&!List.of("高","中","低").contains(str(r,"risk")))e.add("风险等级应为高、中、低");if(type.endsWith("RISK")&&!List.of("待核实","已确认风险","已确认误报","待复核","待人工确认").contains(str(r,"workflow")))e.add("核实状态不受支持");
+  String a=str(r,"startAt"),b=str(r,"expiresAt");if(!a.isBlank()&&!b.isBlank()&&!b.equals("长期")&&b.compareTo(a)<0)e.add("有效期不能早于启用时间");
+  for(String k:List.of("employeeId","authorizationId","pointId","deptCode"))if(str(r,k).matches("(?i)\\d+(\\.\\d+)?e[+-]?\\d+"))e.add(label(k)+"使用了科学计数，请按文本重新导出");return e;
+ }
+ public static String identity(Map<String,?> r){String namespace=str(r,"userNamespace").isBlank()?"employee":str(r,"userNamespace");String employee=str(r,"employeeId");if(namespace.equals("employee")&&employee.matches("[A-Za-z]*[0-9]+"))employee=employee.toLowerCase(Locale.ROOT);return tuple(List.of(namespace,employee));}
+ public static String tuple(List<String> parts){StringBuilder value=new StringBuilder();for(String part:parts)value.append(part.length()).append(':').append(part);return hash(value.toString());}
+ public static String key(Map<String,?> r,String chain){List<String> parts=new ArrayList<>(List.of(chain,str(r,"sourceSystem"),str(r,"appId").isBlank()?str(r,"application"):str(r,"appId"),str(r,"tenantId")));if(chain.equals("user")){if(!str(r,"authorizationId").isBlank())parts.addAll(List.of("id",str(r,"authorizationId")));else parts.addAll(List.of("weak",str(r,"employeeId").toLowerCase(Locale.ROOT),str(r,"roleId"),str(r,"permissionName"),str(r,"startAt")));}else parts.addAll(List.of(str(r,"roleId").isBlank()?str(r,"roleName"):str(r,"roleId"),str(r,"setId").isBlank()?str(r,"setName"):str(r,"setId"),str(r,"pointId")));return tuple(parts);}
+ public static String hash(String s){try{return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(s.getBytes(StandardCharsets.UTF_8)));}catch(Exception e){throw new IllegalStateException(e);}}
+ public static String sourceTable(String chain){return chain.equals("user")?"source_auth":"source_point";}
+ public static String detailTable(String chain){return chain.equals("user")?"user_role_finding":"matrix_finding";}
+ public static List<String> sourceColumns(String chain){return chain.equals("user")?AUTH:POINT;}
+ public static List<String> detailColumns(String chain){return chain.equals("user")?USER_DETAIL:MATRIX_DETAIL;}
+}

@@ -1,0 +1,28 @@
+server:
+  port: ${PORT:8080}
+  address: ${BIND_ADDRESS:127.0.0.1}
+  error:
+    include-message: never
+spring:
+  profiles:
+    default: demo
+  datasource:
+    url: ${DB_URL:jdbc:h2:file:./data/review;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH}
+    username: ${DB_USER:sa}
+    password: ${DB_PASSWORD:}
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 51MB
+  jackson:
+    default-property-inclusion: always
+audit:
+  demo: false
+  storage: ${FILE_STORAGE:./data/files}
+  product-scope: ${PRODUCT_SCOPE:P06}
+  accounts:
+    aa: ${AA_PASSWORD:}
+    leader: ${LEADER_PASSWORD:}
+    product: ${PRODUCT_PASSWORD:}
+    quality: ${QUALITY_PASSWORD:}
+    platform: ${PLATFORM_PASSWORD:}

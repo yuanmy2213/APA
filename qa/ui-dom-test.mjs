@@ -1,0 +1,23 @@
+import {createRequire} from 'node:module';
+const require=createRequire(import.meta.url);
+const {JSDOM}=require(process.env.REVIEW_QA_JSDOM||'jsdom');
+import fs from 'node:fs/promises';
+const html=await fs.readFile(new URL('../frontend/index.html',import.meta.url),'utf8');
+const dom=new JSDOM(html,{url:'http://localhost/',pretendToBeVisual:true});
+for(const k of ['window','document','HTMLElement','Element','Node','SVGElement','Document','Event','MouseEvent','KeyboardEvent'])globalThis[k]=k==='window'?dom.window:dom.window[k];
+Object.defineProperty(globalThis,'navigator',{value:dom.window.navigator,configurable:true});globalThis.localStorage=dom.window.localStorage;dom.window.scrollTo=()=>{};
+let errors=[];const oldError=console.error;console.error=(...args)=>{errors.push(args.map(String).join(' '));oldError(...args);};
+const {app}=await import(new URL('../frontend/app.js',import.meta.url).href);
+if(!document.querySelector('.login-card'))throw new Error('Missing login screen');
+app.me={name:'aa',canWrite:true,canPublish:true,demo:true};app.ready=true;
+app.products.push({id:'P06',name:'财经法务产品',icon:'scale',application:'测试应用',userRiskCount:2,matrixRiskCount:1,authorizations:2,userCount:2,releaseNumber:1,releaseId:'r1',metrics:{total:3,high:3,medium:0,low:0,manual:0,recheck:0},userCoverage:{rawCoverage:'FULL'},matrixCoverage:{},summary:[]});
+const tick=()=>new Promise(r=>setTimeout(r,10));
+for(const page of ['overview','summary','details','sources','data','rules']){app.page=page;await tick();if(!document.querySelector('main'))throw new Error('Missing '+page);}
+app.drawer={kind:'user',recordId:'x',employeeId:'L00566785',userName:'测试',permissionName:'角色',risk:'高',workflow:'待核实',raw:{employeeId:'L00566785',permissionName:'角色'},productId:'P06'};await tick();
+app.editing=true;app.editMode='report';await tick();app.editing=false;app.drawer=null;
+app.importOpen=true;app.importKind='auto';app.importJob={status:'VALIDATED'};app.importSummary=[{chain:'user',rawReplaced:true,rawCount:2,riskReplaced:true,riskCount:0}];await tick();app.importOpen=false;
+app.publishPreview={changes:[{chain:'user',newRisk:0,riskCoverage:'FULL'}]};app.publishOpen=true;await tick();app.publishOpen=false;
+app.historyData={current:{releaseId:'r1'},releases:[{id:'r1',releaseNumber:1,reason:'首次发布',publishedBy:'aa',publishedAt:'2026-10-16T18:30:00+08:00'}]};app.historyOpen=true;await tick();
+if(errors.length)throw new Error(errors.join('\n'));
+console.log(JSON.stringify({ok:true,views:6,dialogs:4,login:true,errors:0}));
+process.exit(0);
