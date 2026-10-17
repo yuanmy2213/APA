@@ -1,0 +1,14 @@
+{
+  "name": "apa-interactive-prototype",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "prepare:assets": "node prepare-assets.mjs",
+    "check": "node --check app.js && node --check data.js && node --check workbook.js && node --check prepare-assets.mjs && node --check serve.mjs",
+    "start": "node serve.mjs"
+  },
+  "dependencies": {
+    "xlsx": "0.18.5"
+  }
+}

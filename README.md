@@ -2,7 +2,7 @@
 
 财经账号权限审查 Finance Account Permission Audit：审查财经领域产品的用户权限数据（iauth/公服），检查用户权限、权限设计是否符合要求（IT权限与业务权限隔离、SOD职责分离、特权账号管理、非雇员权限控制等）。
 
-已实现 Vue + Java 运行版：上传四类核心审查数据，校验并形成草稿，修正报告或原始数据副本，发布后供领导查看看板、汇总、风险明细和原始记录。总体架构继续以已确认的 Word V1.0 为准，具体实现见 [一期详细设计](docs/一期详细设计_V1.0.md)。
+已实现 Vue + Java 运行版：上传四类核心审查数据，校验并形成草稿，修正报告或原始数据副本，发布后供领导查看看板、汇总、风险明细和原始记录。总体架构见 [总体架构设计 V1.0](docs/总体架构设计_V1.0.md)，一期具体实现见 [一期详细设计](docs/一期详细设计_V1.0.md)。全部设计与验证材料从 [文档入口](docs/README.md) 阅读。
 
 ## 直接运行
 
@@ -29,8 +29,8 @@
 
 - `frontend/`：正式运行版 Vue 界面，由 Java 同源托管。
 - `server/`：Java 后端、数据库迁移与集成测试。
-- 在线高保真原型：https://finance-access-review-20261016.garden-rook-7646.chatgpt.site/ 。原型不连接 Java 数据库，源码随原交付包保留，本仓库提交正式运行工程。
-- `docs/`：一期详细设计和验证记录。
+- `prototype/`：[高保真原型源码及启动方法](prototype/README.md)，[在线预览](https://finance-access-review-20261016.garden-rook-7646.chatgpt.site/)，不连接 Java 数据库。
+- `docs/`：[总体架构、一期详细设计、原型交互及验证记录](docs/README.md)。
 - `pom.xml`：执行 `mvn test`，然后 `mvn package`；产物为 `target/finance-access-review-1.0.0.jar`。
 
 可重复验证：`mvn test`；`python3 scripts/verify-release.py`（需先打包）；`cd qa && npm install && npm test`（仅DOM测试需要Node）。

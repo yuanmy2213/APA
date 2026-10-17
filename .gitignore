@@ -8,3 +8,6 @@
 __pycache__/
 *.pyc
 node_modules/
+
+/prototype/vendor/vue.esm-browser.prod.js
+/prototype/vendor/xlsx.mjs
