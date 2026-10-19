@@ -16,7 +16,7 @@ import org.springframework.stereotype.Component;
 import static cn.finance.review.Db.*;
 @Component
 public class WorkbookCodec {
- public static final Map<String,String> SHEETS=Map.of("AUTH","原始权限明细数据","USER_RISK","违规记录明细","POINT","原始权限点明细数据","MATRIX_RISK","权限矩阵检查结果");
+ public static final Map<String,String> SHEETS=Map.of("AUTH","原始权限明细数据","USER_RISK","风险记录明细","POINT","原始权限点明细数据","MATRIX_RISK","权限矩阵检查结果");
  public static class Parsed {
   public final Map<String,List<Map<String,Object>>> data=new LinkedHashMap<>();public final List<Map<String,Object>> errors=new ArrayList<>();public int errorCount; public final List<String> ignored=new ArrayList<>();
   void error(String sheet,int row,String message){errorCount++;if(errors.size()<100)errors.add(map("sheet",sheet,"row",row,"message",message));}
@@ -34,7 +34,7 @@ public class WorkbookCodec {
    if(!p.data.containsKey(type))return;List<Map<String,Object>> rows=p.data.get(type);int max=type.endsWith("RISK")?20000:100000;if(rows.size()>=max)throw new ApiError(422,"ROW_LIMIT",sheet+"超出"+max+"条非空数据限制，未截断发布");
    Map<String,String> named=new LinkedHashMap<>();headers.forEach((col,label)->named.put(label,cells.getOrDefault(col,"")));
    try {Map<String,Object> r=Fields.normalize(named,type);r.put("sourceSheet",sheet);r.put("sourceRow",row);String pn=str(r,"productName");if(!pn.isBlank()&&!pn.equals(product))p.error(sheet,row,"记录所属产品与本次选择的产品不一致");for(String e:Fields.validate(r,type))p.error(sheet,row,e);
-    String chain=type.equals("AUTH")||type.equals("USER_RISK")?"user":"matrix";String key=Fields.key(r,chain);if(type.endsWith("RISK"))key=str(r,"ruleCode")+"|"+key;if(!unique.add(key))p.error(sheet,row,"存在重复记录，必须先处理重复项");rows.add(r);
+    String chain=type.equals("AUTH")||type.equals("USER_RISK")?"user":"matrix";String key=Fields.key(r,chain);if(type.endsWith("RISK"))key=str(r,"ruleCode")+"|"+key;if((!type.equals("AUTH")||Fields.requiresSourceUniqueness(r,chain))&&!unique.add(key))p.error(sheet,row,"存在重复记录，必须先处理重复项");rows.add(r);
    }catch(IllegalArgumentException e){p.error(sheet,row,e.getMessage());}
   }
   void end(){if(headers==null)p.ignored.add(sheet);}
@@ -60,6 +60,6 @@ public class WorkbookCodec {
  }
  public byte[] template(String kind)throws Exception{try(Workbook book=new org.apache.poi.xssf.usermodel.XSSFWorkbook();ByteArrayOutputStream out=new ByteArrayOutputStream()){
   List<String> types=kind.equals("user")?List.of("AUTH","USER_RISK"):kind.equals("matrix")?List.of("POINT","MATRIX_RISK"):List.of("AUTH","USER_RISK","POINT","MATRIX_RISK");
-  for(String type:types){Sheet s=book.createSheet(SHEETS.get(type));Row h=s.createRow(0);List<String> cols=Fields.columns(type);CellStyle style=book.createCellStyle();style.setDataFormat(book.createDataFormat().getFormat("@"));for(int i=0;i<cols.size();i++){h.createCell(i).setCellValue(Fields.label(cols.get(i)));s.setColumnWidth(i,22*256);s.setDefaultColumnStyle(i,style);}s.createFreezePane(0,1);}
-  Sheet n=book.createSheet("填写说明");String[] notes={"四类核心数据分别对应原始授权、用户角色风险、原始权限点绑定、矩阵风险。可删除本次不上传的核心工作表，空工作表表示明确的空清单。","上传时选择产品、来源时点、原始数据和风险清单覆盖范围；所有编号按文本填写，保留前导0。","用户角色检查项1至7，矩阵细项8a至8f。检查项10a至10f作为历史别名兼容。","人员类别和是否雇员为独立来源字段，未提供时为未知，不从风险列表推断总用户量。","原始授权与风险配对上传时建立审查依据关联。仅上传风险时可先发布，原始总量显示缺失或历史基线。","不执行宏、脚本、公式或Excel超链接。日期为YYYY-MM-DD；置信度为0至1或百分数。","完整空清单发布必须确认替换为0条，0条风险不自动代表全部检查通过。"};for(int i=0;i<notes.length;i++)n.createRow(i).createCell(0).setCellValue(notes[i]);n.setColumnWidth(0,110*256);book.write(out);return out.toByteArray();}}
+  for(String type:types){Sheet s=book.createSheet(SHEETS.get(type));Row h=s.createRow(0);List<String> cols=Fields.columns(type);CellStyle style=book.createCellStyle();style.setDataFormat(book.createDataFormat().getFormat("@"));for(int i=0;i<cols.size();i++){h.createCell(i).setCellValue(Fields.label(cols.get(i)).replace("风险明细说明",type.equals("MATRIX_RISK")?"风险原因":"风险明细说明"));s.setColumnWidth(i,22*256);s.setDefaultColumnStyle(i,style);}s.createFreezePane(0,1);}
+  Sheet n=book.createSheet("填写说明");String[] notes={"四类核心数据分别对应原始授权、用户角色风险、原始权限点绑定、矩阵风险。可删除本次不上传的核心工作表，空工作表表示明确的空清单。","上传时选择产品、来源时点、原始数据和风险清单覆盖范围；所有编号按文本填写，保留前导0。","用户角色检查项1至7，矩阵细项8a至8f。检查项10a至10f作为历史别名兼容。","原始权限明细：有授权ID时按来源系统、应用、租户及授权ID校验重复；无授权ID时逐行保留，不以字段组合强制去重。同文件可混合两类记录。","人员类别和是否雇员为独立来源字段，未提供时为未知，不从风险列表推断总用户量。","原始授权与风险配对上传时建立审查依据关联。仅上传风险时可先发布，原始总量显示缺失或历史基线。","不执行宏、脚本、公式或Excel超链接。日期为YYYY-MM-DD；置信度为0至1或百分数。","完整空清单发布必须确认替换为0条，0条风险不自动代表全部检查通过。"};for(int i=0;i<notes.length;i++)n.createRow(i).createCell(0).setCellValue(notes[i]);n.setColumnWidth(0,110*256);book.write(out);return out.toByteArray();}}
 }

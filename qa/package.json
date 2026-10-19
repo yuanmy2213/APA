@@ -1,1 +1,12 @@
-{"name":"apa-ui-qa","version":"1.0.0","private":true,"type":"module","scripts":{"test":"node ui-dom-test.mjs"},"devDependencies":{"jsdom":"26.1.0"}}
+{
+  "name": "apa-ui-qa",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node ui-dom-test.mjs && node oct19-ui-test.mjs && node prototype-dom-test.mjs"
+  },
+  "devDependencies": {
+    "jsdom": "26.1.0"
+  }
+}

@@ -6,16 +6,17 @@ const html=await fs.readFile(new URL('../prototype/index.html',import.meta.url),
 const dom=new JSDOM(html,{url:'http://localhost/',pretendToBeVisual:true});
 for(const k of ['window','document','HTMLElement','Element','Node','SVGElement','Document','Event','MouseEvent','KeyboardEvent'])globalThis[k]=k==='window'?dom.window:dom.window[k];
 Object.defineProperty(globalThis,'navigator',{value:dom.window.navigator,configurable:true});
+globalThis.requestAnimationFrame=dom.window.requestAnimationFrame.bind(dom.window);
 globalThis.localStorage=dom.window.localStorage;dom.window.scrollTo=()=>{};
 let errors=[];const oldError=console.error;console.error=(...args)=>{errors.push(args.map(String).join(' '));oldError(...args);};
 await import(new URL('../prototype/app.js',import.meta.url).href);
 const root=document.querySelector('#app');
 const app=root._vnode?.component?.proxy;
 if(!app||!document.querySelector('main'))throw new Error('Prototype failed to mount');
-for(const copy of ['FINANCE ACCOUNT PERMISSION AUDIT','财经权限，全量审查','8项用户权限检查·6项权限矩阵明细检查'])if(!root.textContent.includes(copy))throw new Error('Missing copy: '+copy);
+for(const copy of ['财经权限，全量审查','8项检查 · 第8项含6条矩阵细则'])if(!root.textContent.includes(copy))throw new Error('Missing copy: '+copy);
 const tick=()=>new Promise(r=>setTimeout(r,10));
 for(const page of ['overview','summary','details','data','rules']){app.page=page;await tick();if(!document.querySelector('main'))throw new Error('Missing page: '+page);}
 app.importOpen=true;await tick();if(!document.querySelector('[role="dialog"]'))throw new Error('Missing import dialog');app.importOpen=false;
 app.searchOpen=true;await tick();if(!document.querySelector('[role="dialog"]'))throw new Error('Missing search dialog');app.searchOpen=false;
 if(errors.length)throw new Error(errors.join('\n'));
-console.log(JSON.stringify({ok:true,prototypePages:5,dialogs:2,copyChecks:3,errors:0}));
+console.log(JSON.stringify({ok:true,prototypePages:5,dialogs:2,copyChecks:2,errors:0}));

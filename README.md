@@ -31,7 +31,7 @@
 - `server/`：Java 后端、数据库迁移与集成测试。
 - `prototype/`：[高保真原型源码及启动方法](prototype/README.md)，[在线预览](https://finance-access-review-20261016.garden-rook-7646.chatgpt.site/)，不连接 Java 数据库。
 - `docs/`：[总体架构、一期详细设计、原型交互及验证记录](docs/README.md)。
-- `pom.xml`：执行 `mvn test`，然后 `mvn package`；产物为 `target/finance-access-review-1.0.0.jar`。
+- `pom.xml`：执行 `mvn test`，然后 `mvn package`；产物为 `target/finance-access-review-1.1.0.jar`。
 
 可重复验证：`mvn test`；`python3 scripts/verify-release.py`（需先打包）；`cd qa && npm install && npm test`（仅DOM测试需要Node）。
 
@@ -46,3 +46,12 @@
 ## 数据边界
 
 上传和编辑影响本系统数据，不操作生产iAuth。只上传风险不会推断授权/用户总量，数据不足会显示未提供或部分覆盖。修改原始副本不会自动消除风险；确认误报需要原因并保留导入记录与历史版本。完整空清单需要额外确认。
+
+
+## 2026-10-19 V1.1.0 更新
+
+本次合并已确认的全部优化：8项检查标准名称、风险用语、双类明细处理状态编辑及误报剔除、六项状态筛选、中文导航与更大字号，以及无授权ID原始权限明细逐行完整导入。搜索细则名称修改不改写风险原因或判定依据。
+
+有授权ID时按现有来源系统、应用、租户范围校验重复；无ID时不做强制组合去重，每行独立存储。保存草稿后需发布，看板才切换到新版本。已有数据库可直接沿用，未改动V1迁移脚本；升级前按原部署要求备份数据库与文件目录。
+
+文档统一入口：[设计与测试](docs/README.md)。专项测试：[10月19日测试用例](docs/测试用例_20261019.md)。正式前端与高保真原型源码均已同步，原型仍为浏览器本地演示。

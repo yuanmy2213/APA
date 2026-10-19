@@ -73,5 +73,56 @@ class PhaseOneIntegrationTest {
   Path sparse=Files.createTempFile("review-sparse-",".xlsx");try(Workbook b=new XSSFWorkbook();OutputStream out=Files.newOutputStream(sparse)){sheet(b,"AUTH",List.of(auth("000001","L00566785")));b.getSheetAt(0).createRow(1000000);b.write(out);}var parsed=codec.parse(sparse,"auto",Fields.PRODUCT_NAMES[2],()->{});assertEquals(0,parsed.errorCount);assertEquals(1,parsed.data.get("AUTH").size());Files.delete(sparse);
   var riskOnly=upload("P04",fixture(false,true,false,false));pubs.publish(aa,str(riskOnly,"draftId"),"1",id(),map("reason","风险清单先行","allowEmpty",false));var products=(List<Map<String,Object>>)query.dashboard(aa,snap()).get("products");var p=products.stream().filter(x->str(x,"id").equals("P04")).findFirst().orElseThrow();assertNull(p.get("authorizations"));assertNull(p.get("userCount"));assertEquals(2L,rows(query.query(aa,input(snap(),"P04","user"),false)).stream().filter(x->str(x,"linkStatus").equals("UNLINKED")).count());
  }
+ @Test @Order(7) void idlessRowsImportCompletelyAndRemainAmbiguous()throws Exception {
+  var raw=auth("","L00566785");var risk=new LinkedHashMap<>(raw);risk.putAll(map("ruleCode","1","risk","高","violation","原风险原因：绑定业务审批；不要替换此内容","workflow","待核实"));
+  byte[] file;try(Workbook b=new XSSFWorkbook();ByteArrayOutputStream out=new ByteArrayOutputStream()){sheet(b,"AUTH",List.of(raw,raw,auth("000777","L00566785")));sheet(b,"USER_RISK",List.of(risk));b.write(out);file=out.toByteArray();}
+  var job=upload("P07",file);var d=pubs.draft(aa,str(job,"draftId"),false);String ds=str(d,"userDatasetId");assertEquals(3,db.count("SELECT COUNT(*) FROM source_auth WHERE dataset_id=:d",map("d",ds)));assertEquals(2,db.count("SELECT COUNT(*) FROM source_auth WHERE dataset_id=:d AND authorization_id=''",map("d",ds)));assertEquals(3,db.count("SELECT COUNT(DISTINCT record_key) FROM source_auth WHERE dataset_id=:d",map("d",ds)));
+  var f=pubs.findings(ds,"user").get(0);assertEquals("AMBIGUOUS",f.get("linkStatus"));assertNull(f.get("currentSourceId"));
+  pubs.publish(aa,str(d,"id"),"1",id(),map("reason","完整保留无ID重复行","allowEmpty",false));String snapshot=snap();var originals=rows(query.query(aa,input(snapshot,"P07","user"),true));assertEquals(3,originals.size());assertEquals(1L,query.people(List.of(ds)).get("users"));assertEquals(3L,query.query(aa,input(snapshot,"P07","user"),true).get("total"));
+  var edit=pubs.createDraft(aa,"P07",List.of("user"));var original=originals.stream().filter(x->str(x,"authorizationId").isBlank()).findFirst().orElseThrow();var target=review.findDraftRecord(aa,str(edit,"id"),str(original,"id"),"user",true);var source=(Map<String,Object>)target.get("source");review.editSource(aa,str(edit,"id"),str(source,"id"),"user","1",map("reason","重复候选下修正说明","changes",map("description","说明已修正")));
+  assertStatus(422,()->review.editSource(aa,str(edit,"id"),str(source,"id"),"user","2",map("reason","重复ID不允许","changes",map("authorizationId","000777"))));
+  pubs.publish(aa,str(edit,"id"),"2",id(),map("reason","发布无ID原始记录修订","allowEmpty",false));assertEquals(3L,query.query(aa,input(snap(),"P07","user"),true).get("total"));
+ }
+ @Test @Order(8) void duplicatePolicyByRowAcrossFormats()throws Exception {
+  var raw=auth("","L00566785");for(String ext:List.of("xlsx","xls","csv")){
+   Path path=Files.createTempFile("idless-", "."+ext);
+   if(ext.equals("csv"))Files.writeString(path,"用户工号,权限名称,授权记录ID\nL00566785,角色,\nL00566785,角色,\nL00566785,角色,00001\n");
+   else try(Workbook b=ext.equals("xls")?new org.apache.poi.hssf.usermodel.HSSFWorkbook():new XSSFWorkbook();OutputStream out=Files.newOutputStream(path)){sheet(b,"AUTH",List.of(raw,raw,auth("00001","L00566785")));b.write(out);}
+   var parsed=codec.parse(path,"auto",Fields.PRODUCT_NAMES[7],()->{});assertEquals(0,parsed.errorCount,String.valueOf(parsed.errors));assertEquals(3,parsed.data.get("AUTH").size());assertEquals("00001",parsed.data.get("AUTH").get(2).get("authorizationId"));Files.delete(path);
+  }
+  Path noColumn=Files.createTempFile("no-id-column-",".csv");Files.writeString(noColumn,"用户工号,权限名称\nL00566785,角色\nL00566785,角色\n");assertEquals(2,codec.parse(noColumn,"auto",Fields.PRODUCT_NAMES[7],()->{}).data.get("AUTH").size());Files.delete(noColumn);
+  Path duplicate=Files.createTempFile("strong-duplicate-",".csv");Files.writeString(duplicate,"用户工号,权限名称,授权记录ID\nL00566785,角色,00001\nOTHER,另一个角色,00001\nL00566785,角色,\nL00566785,角色,\n");var bad=codec.parse(duplicate,"auto",Fields.PRODUCT_NAMES[7],()->{});assertTrue(bad.errors.stream().anyMatch(e->str(e,"message").contains("重复")));assertEquals(4,bad.data.get("AUTH").size());Files.delete(duplicate);
+  // Matrix bindings and result findings retain their pre-existing duplicate rules.
+  Path binding=Files.createTempFile("binding-duplicate-",".xlsx");try(Workbook b=new XSSFWorkbook();OutputStream out=Files.newOutputStream(binding)){sheet(b,"POINT",List.of(point(),point()));b.write(out);}assertTrue(codec.parse(binding,"auto",Fields.PRODUCT_NAMES[7],()->{}).errorCount>0);Files.delete(binding);
+ }
+ @Test @Order(9) void bothStatusChainsUpdateAllMetricsWithoutChangingReasons()throws Exception {
+  var j=upload("P08",fixture(true,true,true,false));pubs.publish(aa,str(j,"draftId"),"1",id(),map("reason","状态验证基线","allowEmpty",false));String initial=snap();
+  for(String kind:List.of("user","matrix")){
+   String s=snap();var f=rows(query.query(aa,input(s,"P08",kind),false)).get(0);String reason=str(f,"violation");var draft=pubs.createDraft(aa,"P08",List.of(kind));var target=review.findDraftRecord(aa,str(draft,"id"),str(f,"id"),kind,false);var finding=(Map<String,Object>)target.get("finding");long before=(long)query.query(aa,input(s,"P08",kind),false).get("total");
+   assertStatus(422,()->review.editFinding(aa,str(draft,"id"),str(finding,"id"),"1",map("reason","","changes",map("workflow","已确认误报"))));
+   review.editFinding(aa,str(draft,"id"),str(finding,"id"),"1",map("reason","核对权限点，确认误报","changes",map("workflow","已确认误报")));
+   assertEquals(before,query.query(aa,input(snap(),"P08",kind),false).get("total"));pubs.publish(aa,str(draft,"id"),"2",id(),map("reason","发布误报","allowEmpty",false));String now=snap();assertEquals(before-1,query.query(aa,input(now,"P08",kind),false).get("total"));var all=input(now,"P08",kind);all.put("includeFalsePositive",true);assertEquals(before,query.query(aa,all,false).get("total"));var kept=rows(query.query(aa,all,false)).stream().filter(x->str(x,"workflow").equals("已确认误报")).findFirst().orElseThrow();assertEquals(reason,kept.get("violation"));
+   var product=((List<Map<String,Object>>)query.dashboard(aa,now).get("products")).stream().filter(p->str(p,"id").equals("P08")).findFirst().orElseThrow();var metrics=(Map<?,?>)product.get("metrics");assertEquals(1L,metrics.get("falsePositive"));assertEquals(before-1,((Map<?,?>)query.query(aa,input(now,"P08",kind),false).get("counts")).get(kind));assertEquals(Fields.RULE_NAMES[7],query.summary(str(pubs.release(str(pubs.publication("P08"),"releaseId")),"userDatasetId"),str(pubs.release(str(pubs.publication("P08"),"releaseId")),"matrixDatasetId")).get(7).get("name"));
+   var restore=pubs.createDraft(aa,"P08",List.of(kind));var rt=review.findDraftRecord(aa,str(restore,"id"),str(kept,"id"),kind,false);var rf=(Map<String,Object>)rt.get("finding");review.editFinding(aa,str(restore,"id"),str(rf,"id"),"1",map("reason","完成整改复核","changes",map("workflow","已整改")));pubs.publish(aa,str(restore,"id"),"2",id(),map("reason","发布已整改","allowEmpty",false));assertEquals(before,query.query(aa,input(snap(),"P08",kind),false).get("total"));assertEquals(reason,rows(query.query(aa,input(snap(),"P08",kind),false)).stream().filter(x->str(x,"workflow").equals("已整改")).findFirst().orElseThrow().get("violation"));
+  }
+  assertEquals(2L,query.query(aa,input(initial,"P08","user"),false).get("total"));
+ }
+ @Test @Order(10) void riskTemplatesAliasesAndCanonicalNames()throws Exception {
+  assertEquals("业务人员不应持有IT权限",Fields.RULE_NAMES[1]);assertEquals("权限矩阵明细检查",Fields.RULE_NAMES[7]);
+  try(Workbook book=new XSSFWorkbook(new ByteArrayInputStream(codec.template("all")))){
+   assertNotNull(book.getSheet("风险记录明细"));assertNull(book.getSheet("违规记录明细"));StringBuilder labels=new StringBuilder();for(Sheet s:book)for(Row row:s)for(Cell c:row)labels.append(c.toString());assertFalse(labels.toString().contains("违规"));assertTrue(labels.toString().contains("风险原因"));assertTrue(labels.toString().contains("风险明细说明"));assertTrue(labels.toString().contains("无授权ID时逐行保留"));
+  }
+  var source=Fields.normalize(Map.of("授权记录ID","00004","用户工号","L00566785","权限名称","角色"),"AUTH");assertEquals("00004",source.get("authorizationId"));String original="违规原文仍需完整保留，不修改值";var normalized=Fields.normalize(Map.of("检查细项","10b","违规原因",original,"风险等级","高"),"MATRIX_RISK");assertEquals(original,normalized.get("violation"));assertEquals("8b",normalized.get("ruleCode"));
+ }
+ @Test @Order(11) void rawExportRetainsIdlessDuplicates()throws Exception {
+  var q=input(snap(),"P07","user");q.put("source",true);var job=exports.create(aa,q,id());for(int i=0;i<400;i++){exports.run();job=exports.get(aa,str(job,"id"));if(!List.of("QUEUED","RUNNING").contains(str(job,"status")))break;Thread.sleep(25);}assertEquals("SUCCEEDED",job.get("status"));byte[] bytes=mvc.perform(get("/api/export-jobs/"+str(job,"id")+"/file").with(user("aa").roles("AA"))).andExpect(status().isOk()).andReturn().getResponse().getContentAsByteArray();try(Workbook b=new XSSFWorkbook(new ByteArrayInputStream(bytes))){assertEquals(3,b.getSheet("原始授权记录").getLastRowNum());}
+ }
+
+ @Test @Order(12) void editingSourceReopensFalsePositiveForBothChains()throws Exception {
+  for(String kind:List.of("user","matrix")){
+   var finding=rows(query.query(aa,input(snap(),"P08",kind),false)).get(0);var correction=pubs.createDraft(aa,"P08",List.of(kind));var t=review.findDraftRecord(aa,str(correction,"id"),str(finding,"id"),kind,false);var f=(Map<String,Object>)t.get("finding");review.editFinding(aa,str(correction,"id"),str(f,"id"),"1",map("reason","确认误报后原始数据变化的回归","changes",map("workflow","已确认误报")));pubs.publish(aa,str(correction,"id"),"2",id(),map("reason","发布误报","allowEmpty",false));
+   String old=snap();var all=input(old,"P08",kind);all.put("includeFalsePositive",true);var excluded=rows(query.query(aa,all,false)).stream().filter(x->str(x,"workflow").equals("已确认误报")).findFirst().orElseThrow();var edit=pubs.createDraft(aa,"P08",List.of(kind));var target=review.findDraftRecord(aa,str(edit,"id"),str(excluded,"id"),kind,false);var source=(Map<String,Object>)target.get("source");assertNotNull(source);review.editSource(aa,str(edit,"id"),str(source,"id"),kind,"1",map("reason","原始副本发生变化需重新复核","changes",kind.equals("user")?map("description","修正后的功能描述"):map("pointName","修正后的权限点名称")));pubs.publish(aa,str(edit,"id"),"2",id(),map("reason","发布待复核","allowEmpty",false));var results=rows(query.query(aa,input(snap(),"P08",kind),false));assertTrue(results.stream().anyMatch(x->str(x,"workflow").equals("待复核")&&str(x,"violation").equals(str(excluded,"violation"))));
+  }
+ }
 
 }
