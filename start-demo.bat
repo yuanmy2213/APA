@@ -1,7 +1,7 @@
 @echo off
 cd /d "%~dp0"
-set "REVIEW_JAR=finance-access-review-1.1.0.jar"
-if not exist "%REVIEW_JAR%" set "REVIEW_JAR=target\finance-access-review-1.1.0.jar"
+set "REVIEW_JAR=finance-access-review-1.2.0.jar"
+if not exist "%REVIEW_JAR%" set "REVIEW_JAR=target\finance-access-review-1.2.0.jar"
 if not exist "%REVIEW_JAR%" (
   echo Please run mvn package or use the release package containing the JAR.
   pause

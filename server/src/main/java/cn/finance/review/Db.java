@@ -20,6 +20,7 @@ public class Db {
  public int update(String sql,Map<String,?> p){return jdbc.update(sql,p);}
  public long count(String sql,Map<String,?> p){Long r=jdbc.queryForObject(sql,p,Long.class);return r==null?0:r;}
  public void insert(String table,Map<String,?> values){String cols=String.join(",",values.keySet().stream().map(Db::snake).toList());String params=String.join(",",values.keySet().stream().map(k->":"+k).toList());update("INSERT INTO "+table+" ("+cols+") VALUES ("+params+")",values);}
+ public void insertBatch(String table,List<Map<String,Object>> rows){if(rows.isEmpty())return;var keys=rows.get(0).keySet();String cols=String.join(",",keys.stream().map(Db::snake).toList());String values=String.join(",",keys.stream().map(k->":"+k).toList());jdbc.batchUpdate("INSERT INTO "+table+" ("+cols+") VALUES ("+values+")",org.springframework.jdbc.core.namedparam.SqlParameterSourceUtils.createBatch(rows.toArray()));}
  public <T>T transaction(Supplier<T> work){return tx.execute(s->work.get());}
  public String encode(Object x){try{return json.writeValueAsString(x);}catch(Exception e){throw new IllegalStateException(e);}}
  public Map<String,Object> decode(String x){try{return x==null?new LinkedHashMap<>():json.readValue(x,new TypeReference<LinkedHashMap<String,Object>>(){});}catch(Exception e){throw new IllegalStateException(e);}}

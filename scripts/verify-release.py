@@ -14,11 +14,14 @@ import time
 import urllib.request
 import urllib.error
 import uuid
+import io
+import zipfile
+import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[1]
-JAR = ROOT / 'finance-access-review-1.1.0.jar'
+JAR = ROOT / 'finance-access-review-1.2.0.jar'
 if not JAR.is_file():
-    JAR = ROOT / 'target/finance-access-review-1.1.0.jar'
+    JAR = ROOT / 'target/finance-access-review-1.2.0.jar'
 EXAMPLE = ROOT / 'examples/财经法务_四类核心数据_演示.xlsx'
 
 with tempfile.TemporaryDirectory(prefix='finance-review-release-') as temporary:
@@ -40,13 +43,13 @@ with tempfile.TemporaryDirectory(prefix='finance-review-release-') as temporary:
         with client.open(urllib.request.Request(origin + path, data=body, headers=h, method=method), timeout=30) as response:
             raw = response.read()
             return raw if binary else json.loads(raw)
-    def upload_csv(product, csv_text):
+    def upload_file(product, data, filename):
         boundary = 'review-' + uuid.uuid4().hex
         values = {'mode': 'auto', 'rawCoverage': 'FULL', 'riskCoverage': 'FULL', 'sourceAsOf': '2026-10-19T15:32:23+08:00'}
         body = b''
         for key, value in values.items():
             body += f'--{boundary}\r\nContent-Disposition: form-data; name="{key}"\r\n\r\n{value}\r\n'.encode()
-        body += f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="source.csv"\r\nContent-Type: text/csv\r\n\r\n'.encode() + csv_text.encode('utf-8-sig') + f'\r\n--{boundary}--\r\n'.encode()
+        body += f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="{filename}"\r\nContent-Type: text/csv\r\n\r\n'.encode() + data + f'\r\n--{boundary}--\r\n'.encode()
         job = request(f'/api/products/{product}/import-jobs', 'POST', body, {'Content-Type': 'multipart/form-data; boundary=' + boundary, 'Idempotency-Key': str(uuid.uuid4())})
         for _ in range(200):
             job = request('/api/import-jobs/' + job['id'])
@@ -54,6 +57,41 @@ with tempfile.TemporaryDirectory(prefix='finance-review-release-') as temporary:
                 return job
             time.sleep(.1)
         raise AssertionError('Import timed out')
+
+    def upload_csv(product, csv_text):
+        return upload_file(product, csv_text.encode('utf-8-sig'), 'source.csv')
+
+    def report_without_risk_scope():
+        source = zipfile.ZipFile(io.BytesIO(EXAMPLE.read_bytes()))
+        ns = {'s': 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'}
+        strings = []
+        if 'xl/sharedStrings.xml' in source.namelist():
+            strings = [''.join(node.itertext()) for node in ET.fromstring(source.read('xl/sharedStrings.xml'))]
+        # The fixture's second and fourth sheets are user/matrix findings; remove their scope columns.
+        targets = {'xl/worksheets/sheet2.xml', 'xl/worksheets/sheet4.xml'}
+        result = io.BytesIO()
+        with zipfile.ZipFile(result, 'w', zipfile.ZIP_DEFLATED) as out:
+            for entry in source.infolist():
+                content = source.read(entry.filename)
+                if entry.filename in targets:
+                    root = ET.fromstring(content)
+                    rows = root.findall('.//s:sheetData/s:row', ns)
+                    removed = set()
+                    for cell in rows[0]:
+                        value = cell.find('s:v', ns)
+                        label = ''.join(cell.itertext())
+                        if cell.get('t') == 's' and value is not None:
+                            label = strings[int(value.text)]
+                        if label in ('所属应用', '应用ID', '租户ID', '来源系统'):
+                            removed.add(''.join(x for x in cell.get('r') if x.isalpha()))
+                    assert removed, entry.filename
+                    for row in rows:
+                        for cell in list(row):
+                            if ''.join(x for x in cell.get('r', '') if x.isalpha()) in removed:
+                                row.remove(cell)
+                    content = ET.tostring(root, encoding='utf-8', xml_declaration=True)
+                out.writestr(entry, content)
+        return result.getvalue()
 
     def start():
         log = (folder / 'application.log').open('ab')
@@ -84,6 +122,8 @@ with tempfile.TemporaryDirectory(prefix='finance-review-release-') as temporary:
         assert '财经权限，全量审查' in html
         assert '8项检查 · 第8项含6条矩阵细则' in html
         assert request('/api/me')['canPublish']
+        assert request('/api/import-jobs') == []
+        assert 'rule-share-list' in html
         before = request('/api/snapshots', 'POST')['id']
         dashboard = request('/api/dashboard?snapshotId=' + before)
         assert dashboard['overall']['authorizations'] is None
@@ -139,6 +179,26 @@ with tempfile.TemporaryDirectory(prefix='finance-review-release-') as temporary:
         assert all(not r['authorizationId'] for r in idless_rows['rows'])
         duplicate = upload_csv('P08', '用户工号,权限名称,授权记录ID\nL00666785,角色,00001\nL00766785,其他角色,00001\n')
         assert duplicate['status'] == 'FAILED', duplicate
+        paired = upload_file('P09', report_without_risk_scope(), 'missing-scope.xlsx')
+        assert paired['status'] == 'VALIDATED', paired
+        request('/api/drafts/' + paired['draftId'] + '/publish', 'POST', {'reason': '缺少来源列仍唯一关联', 'allowEmpty': False}, {'If-Match': '1', 'Idempotency-Key': str(uuid.uuid4())})
+        sid = request('/api/snapshots', 'POST')['id']
+        for kind in ('user', 'matrix'):
+            findings = request('/api/findings/query', 'POST', {**q, 'snapshotId': sid, 'productId': 'P09', 'kind': kind})
+            assert all(r['linkStatus'] == 'LINKED_WEAK' for r in findings['rows'])
+            trace = request('/api/findings/' + findings['rows'][0]['id'] + '?snapshotId=' + sid)
+            assert trace['raw'] and trace['auditedRaw']
+        error_csv = '角色名称,权限集名称,权限点ID\n' + '角色,权限集,000001\n' * 1210
+        error_job = upload_csv('P10', error_csv)
+        assert error_job['status'] == 'FAILED', error_job
+        assert error_job['errors']['count'] == 1209 and len(error_job['errors']['items']) == 100
+        page = request('/api/import-jobs/' + error_job['id'] + '/errors/page?page=7&pageSize=200')
+        assert page['total'] == 1209 and len(page['rows']) == 9
+        full_csv = request('/api/import-jobs/' + error_job['id'] + '/errors', binary=True).decode('utf-8-sig')
+        assert len(full_csv.splitlines()) == 1210
+        tasks = request('/api/import-jobs')
+        assert len(tasks) >= 5 and all(j['originalName'] and j['assetId'] for j in tasks)
+        assert [j['createdAt'] for j in tasks] == sorted((j['createdAt'] for j in tasks), reverse=True)
         # Each status PATCH changes workflow only; original reasons are exact preserved values.
         for kind in ('user', 'matrix'):
             sid = request('/api/snapshots', 'POST')['id']
@@ -153,8 +213,12 @@ with tempfile.TemporaryDirectory(prefix='finance-review-release-') as temporary:
             assert next(r for r in all_rows['rows'] if r['workflow'] == '已确认误报')['violation'] == finding['violation']
         sid = request('/api/snapshots', 'POST')['id']
         expected = request('/api/dashboard?snapshotId=' + sid)['overall']
-        assert expected['authorizations'] == 5 and expected['users'] == 4
-        assert expected['total'] == 2 and expected['falsePositive'] == 2
+        assert expected['authorizations'] == 8 and expected['users'] == 4
+        assert expected['total'] == 6 and expected['falsePositive'] == 2
+        distribution = request('/api/dashboard?snapshotId=' + sid)['ruleDistribution']
+        assert len(distribution) == 8 and sum(r['count'] for r in distribution) == expected['total']
+        delta = request('/api/products/P06/releases/compare')
+        assert delta['summary']['removed'] == 1
     finally:
         stop(process, log)
     process, log = start()
@@ -166,4 +230,4 @@ with tempfile.TemporaryDirectory(prefix='finance-review-release-') as temporary:
         assert request('/api/source-records/query', 'POST', {**q, 'snapshotId': snapshot, 'productId': 'P07'})['total'] == 2
     finally:
         stop(process, log)
-    print(json.dumps({'packaged_http_flow': 'passed', 'login_csrf': 'passed', 'multipart_upload': 'passed', 'publication_snapshot': 'passed', 'source_recheck': 'passed', 'restart_persistence': 'passed', 'idless_complete_import': 'passed', 'strong_duplicate_rejected': 'passed', 'both_status_chains': 'passed', 'risk_reasons_preserved': 'passed', 'example_records': {'authorizations': 3, 'user_risks': 3, 'matrix_risks': 1}}))
+    print(json.dumps({'packaged_http_flow': 'passed', 'login_csrf': 'passed', 'multipart_upload': 'passed', 'publication_snapshot': 'passed', 'source_recheck': 'passed', 'restart_persistence': 'passed', 'idless_complete_import': 'passed', 'strong_duplicate_rejected': 'passed', 'both_status_chains': 'passed', 'risk_reasons_preserved': 'passed', 'task_list_200': 'passed', 'weak_scope_association': 'passed', 'full_error_csv_pagination': 'passed', 'version_diff': 'passed', 'check_item_distribution': 'passed', 'example_records': {'authorizations': 3, 'user_risks': 3, 'matrix_risks': 1}}))

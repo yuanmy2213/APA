@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node ui-dom-test.mjs && node oct19-ui-test.mjs && node prototype-dom-test.mjs"
+    "test": "node ui-dom-test.mjs && node oct19-ui-test.mjs && node prototype-dom-test.mjs && node review-optimization-test.mjs"
   },
   "devDependencies": {
     "jsdom": "26.1.0"

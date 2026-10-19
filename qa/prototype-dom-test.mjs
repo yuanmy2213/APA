@@ -16,6 +16,8 @@ if(!app||!document.querySelector('main'))throw new Error('Prototype failed to mo
 for(const copy of ['财经权限，全量审查','8项检查 · 第8项含6条矩阵细则'])if(!root.textContent.includes(copy))throw new Error('Missing copy: '+copy);
 const tick=()=>new Promise(r=>setTimeout(r,10));
 for(const page of ['overview','summary','details','data','rules']){app.page=page;await tick();if(!document.querySelector('main'))throw new Error('Missing page: '+page);}
+app.page='overview';await tick();if(document.querySelectorAll('.rule-share-row').length!==8)throw new Error('Missing eight check-item bars');
+const before=app.ruleDistribution.find(r=>r.id==='8').count;const sample=app.products.find(p=>p.id==='P06').matrixRisks[0],originalReason=sample.violation;sample.workflow='已确认误报';await tick();if(app.ruleDistribution.find(r=>r.id==='8').count!==before-1)throw new Error('False positive included in chart');app.goDistributionRule(app.ruleDistribution[7]);await tick();if(app.detailKind!=='matrix'||app.ruleFilter!=='8'||app.selectedProduct!=='all')throw new Error('Incorrect chart drilldown');if(sample.violation!==originalReason)throw new Error('Reason value changed');
 app.importOpen=true;await tick();if(!document.querySelector('[role="dialog"]'))throw new Error('Missing import dialog');app.importOpen=false;
 app.searchOpen=true;await tick();if(!document.querySelector('[role="dialog"]'))throw new Error('Missing search dialog');app.searchOpen=false;
 if(errors.length)throw new Error(errors.join('\n'));

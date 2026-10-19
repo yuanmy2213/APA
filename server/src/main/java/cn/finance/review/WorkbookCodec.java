@@ -18,31 +18,48 @@ import static cn.finance.review.Db.*;
 public class WorkbookCodec {
  public static final Map<String,String> SHEETS=Map.of("AUTH","原始权限明细数据","USER_RISK","风险记录明细","POINT","原始权限点明细数据","MATRIX_RISK","权限矩阵检查结果");
  public static class Parsed {
-  public final Map<String,List<Map<String,Object>>> data=new LinkedHashMap<>();public final List<Map<String,Object>> errors=new ArrayList<>();public int errorCount; public final List<String> ignored=new ArrayList<>();
-  void error(String sheet,int row,String message){errorCount++;if(errors.size()<100)errors.add(map("sheet",sheet,"row",row,"message",message));}
+  public final Map<String,List<Map<String,Object>>> data=new LinkedHashMap<>();
+  public final List<Map<String,Object>> errors=new ArrayList<>(),structure=new ArrayList<>();
+  public int errorCount,completedSheets;public long processedRows;public final List<String> ignored=new ArrayList<>();
+  java.util.function.Consumer<Map<String,Object>> sink;
+  void error(String sheet,int row,String message){error(sheet,row,message,Map.of());}
+  void error(String sheet,int row,String message,Map<String,Object> extra){var e=map("sheet",sheet,"row",row,"message",message);e.putAll(extra);errorCount++;if(errors.size()<100)errors.add(e);if(sink!=null)sink.accept(e);}
  }
  static class DateFormatter extends DataFormatter {
   DateFormatter(){super(Locale.ROOT);}
   @Override public String formatRawCellContents(double value,int index,String format,boolean use1904){if(DateUtil.isADateFormat(index,format)&&DateUtil.isValidExcelDate(value))return DateUtil.getLocalDateTime(value,use1904).toLocalDate().toString();return super.formatRawCellContents(value,index,format,use1904);}
  }
  class Collector {
-  final Parsed p;final String sheet,mode,product;final Runnable pulse;String type;Map<Integer,String> headers;int nonEmpty;final Set<String> unique=new HashSet<>();
-  Collector(Parsed p,String sheet,String mode,String product,Runnable pulse){this.p=p;this.sheet=sheet;this.mode=mode;this.product=product;this.pulse=pulse;}
+  final Parsed p;final String sheet,mode,product;final java.util.function.Consumer<Map<String,Object>> pulse;String type;Map<Integer,String> headers;int nonEmpty;final Map<String,Integer> unique=new HashMap<>();Collection<String> observed=List.of();
+  Collector(Parsed p,String sheet,String mode,String product,java.util.function.Consumer<Map<String,Object>> pulse){this.p=p;this.sheet=sheet;this.mode=mode;this.product=product;this.pulse=pulse;}
   void formula(int row){if(type!=null)p.error(sheet,row,"包含公式单元格；请转为静态值后上传");}
-  void row(int row,Map<Integer,String> cells){if(cells.values().stream().allMatch(String::isBlank))return;nonEmpty++;if(nonEmpty%500==0)pulse.run();
-   if(headers==null){if(nonEmpty>20)return;type=detect(sheet,cells.values(),mode);if(type==null)return;headers=new LinkedHashMap<>();cells.forEach((k,v)->{if(!v.isBlank())headers.put(k,v);});if(new HashSet<>(headers.values()).size()!=headers.size())p.error(sheet,row,"表头存在重复列");if(p.data.containsKey(type)){p.error(sheet,row,"同一文件中重复提供了同类核心工作表");return;}p.data.put(type,new ArrayList<>());List<String> req=switch(type){case "AUTH"->List.of("employeeId","permissionName");case "POINT"->List.of("roleName","setName","pointId");case "USER_RISK"->List.of("employeeId","permissionName","ruleCode");default->List.of("ruleCode","roleName","pointId","setName");};for(String key:req)if(Fields.ALIASES.get(key).stream().noneMatch(cells.values()::contains))p.error(sheet,row,"缺少必填列："+Fields.label(key));return;}
-   if(!p.data.containsKey(type))return;List<Map<String,Object>> rows=p.data.get(type);int max=type.endsWith("RISK")?20000:100000;if(rows.size()>=max)throw new ApiError(422,"ROW_LIMIT",sheet+"超出"+max+"条非空数据限制，未截断发布");
+  void row(int row,Map<Integer,String> cells){if(cells.values().stream().allMatch(String::isBlank))return;nonEmpty++;if(nonEmpty%500==0)progress();
+   if(headers==null){if(nonEmpty>20)return;if(observed.isEmpty())observed=new ArrayList<>(cells.values());type=detect(sheet,cells.values(),mode);if(type==null)return;headers=new LinkedHashMap<>();cells.forEach((k,v)->{if(!v.isBlank())headers.put(k,v);});if(new HashSet<>(headers.values()).size()!=headers.size())p.error(sheet,row,"表头存在重复列");if(p.data.containsKey(type)){p.error(sheet,row,"同一文件中重复提供了同类核心工作表");return;}p.data.put(type,new ArrayList<>());List<String> req=switch(type){case "AUTH"->List.of("employeeId","permissionName");case "POINT"->List.of("roleName","setName","pointId");case "USER_RISK"->List.of("employeeId","permissionName","ruleCode");default->List.of("ruleCode","roleName","pointId","setName");};for(String key:req)if(Fields.ALIASES.get(key).stream().noneMatch(cells.values()::contains))p.error(sheet,row,"缺少必填列："+Fields.label(key));return;}
+   if(!p.data.containsKey(type))return;p.processedRows++;List<Map<String,Object>> rows=p.data.get(type);int max=type.endsWith("RISK")?20000:100000;if(rows.size()>=max)throw new ApiError(422,"ROW_LIMIT",sheet+"超出"+max+"条非空数据限制，未截断发布");
    Map<String,String> named=new LinkedHashMap<>();headers.forEach((col,label)->named.put(label,cells.getOrDefault(col,"")));
    try {Map<String,Object> r=Fields.normalize(named,type);r.put("sourceSheet",sheet);r.put("sourceRow",row);String pn=str(r,"productName");if(!pn.isBlank()&&!pn.equals(product))p.error(sheet,row,"记录所属产品与本次选择的产品不一致");for(String e:Fields.validate(r,type))p.error(sheet,row,e);
-    String chain=type.equals("AUTH")||type.equals("USER_RISK")?"user":"matrix";String key=Fields.key(r,chain);if(type.endsWith("RISK"))key=str(r,"ruleCode")+"|"+key;if((!type.equals("AUTH")||Fields.requiresSourceUniqueness(r,chain))&&!unique.add(key))p.error(sheet,row,"存在重复记录，必须先处理重复项");rows.add(r);
+    String chain=type.equals("AUTH")||type.equals("USER_RISK")?"user":"matrix";String key=Fields.key(r,chain);if(type.endsWith("RISK"))key=str(r,"ruleCode")+"|"+key;if(!type.equals("AUTH")||Fields.requiresSourceUniqueness(r,chain)){Integer first=unique.putIfAbsent(key,row);if(first!=null){String business=duplicateKey(r,type);p.error(sheet,row,"重复记录："+business+"；首次出现于第"+first+"行",map("code","DUPLICATE","firstRow",first,"businessKey",business));}}rows.add(r);
    }catch(IllegalArgumentException e){p.error(sheet,row,e.getMessage());}
   }
-  void end(){if(headers==null)p.ignored.add(sheet);}
+  void progress(){pulse.accept(map("phase","PARSING","currentSheet",sheet,"processedRows",p.processedRows,"completedSheets",p.completedSheets));}
+  void end(){if(headers==null)p.ignored.add(sheet);p.completedSheets++;p.structure.add(map("sheet",sheet,"type",type==null?"IGNORED":type,"headers",headers==null?observed:new ArrayList<>(headers.values()),"rows",headers==null?0:Math.max(0,nonEmpty-1),"message",headers==null?"未识别为核心明细，已忽略；如需导入，请核对标准模板的必填列":"已识别核心数据"));progress();}
  }
- static String detect(String name,Collection<String> headers,String mode){Set<String> hs=new HashSet<>(headers);boolean employee=Fields.ALIASES.get("employeeId").stream().anyMatch(hs::contains);boolean point=Fields.ALIASES.get("pointId").stream().anyMatch(hs::contains);boolean rule=Fields.ALIASES.get("ruleCode").stream().anyMatch(hs::contains);
-  if(point&&name.contains("原始"))return "POINT";if(employee&&name.contains("原始"))return "AUTH";if(point&&rule)return "MATRIX_RISK";if(employee&&rule)return "USER_RISK";if(point)return "POINT";if(employee)return "AUTH";return null;}
- public Parsed parse(Path path,String mode,String product,Runnable pulse)throws Exception {
-  Parsed p=new Parsed();String name=path.toString().toLowerCase(Locale.ROOT);
+ static String duplicateKey(Map<String,Object> row,String type){List<String> keys=type.equals("AUTH")||type.equals("USER_RISK")?List.of("employeeId","permissionName","authorizationId","appId","application","tenantId"):List.of("roleName","setName","pointId","appId","application","tenantId");return String.join("；",keys.stream().filter(k->!str(row,k).isBlank()).map(k->Fields.label(k)+"="+str(row,k)).toList());}
+ static String detect(String name,Collection<String> headers,String mode){Set<String> hs=new HashSet<>(headers);boolean employee=has(hs,"employeeId"),permission=has(hs,"permissionName"),point=has(hs,"pointId"),rule=has(hs,"ruleCode");
+  if(name.equals("原始权限明细数据")||name.equals("原始授权记录"))return "AUTH";
+  if(name.equals("原始权限点明细数据"))return "POINT";
+  if(name.equals("风险记录明细")||name.equals("违规记录明细"))return "USER_RISK";
+  if(name.equals("权限矩阵检查结果"))return "MATRIX_RISK";
+  if(List.of("人员分类","数据概况","汇总","风险等级评估","整改建议","快照","填写说明","统计").stream().anyMatch(name::contains))return null;
+  if(point&&name.contains("原始"))return "POINT";if(employee&&permission&&name.contains("原始"))return "AUTH";
+  if(point&&rule)return "MATRIX_RISK";if(employee&&rule)return "USER_RISK";
+  if(point&&has(hs,"roleName")&&has(hs,"setName"))return "POINT";
+  if(employee&&permission)return "AUTH";return null;
+ }
+ static boolean has(Set<String> headers,String key){return Fields.ALIASES.get(key).stream().anyMatch(headers::contains);}
+ public Parsed parse(Path path,String mode,String product,Runnable pulse)throws Exception{return parse(path,mode,product,x->pulse.run(),null);}
+ public Parsed parse(Path path,String mode,String product,java.util.function.Consumer<Map<String,Object>> pulse,java.util.function.Consumer<Map<String,Object>> errors)throws Exception {
+  Parsed p=new Parsed();p.sink=errors;String name=path.toString().toLowerCase(Locale.ROOT);
   if(name.endsWith(".xlsx")){
    try(OPCPackage pack=OPCPackage.open(path.toFile(),PackageAccess.READ)){XSSFReader reader=new XSSFReader(pack);var strings=reader.getSharedStringsTable();var styles=reader.getStylesTable();var sheets=(XSSFReader.SheetIterator)reader.getSheetsData();
     while(sheets.hasNext()){try(InputStream in=sheets.next()){Collector c=new Collector(p,sheets.getSheetName(),mode,product,pulse);var handler=new XSSFSheetXMLHandler(styles,strings,new XSSFSheetXMLHandler.SheetContentsHandler(){Map<Integer,String> cells;public void startRow(int row){cells=new LinkedHashMap<>();}public void endRow(int row){c.row(row+1,cells);}public void cell(String ref,String value,XSSFComment comment){if(ref!=null)cells.put(new org.apache.poi.ss.util.CellReference(ref).getCol()+0,value==null?"":value);}public void headerFooter(String text,boolean header,String tag){}},new DateFormatter(),true);
