@@ -27,6 +27,7 @@ for(const kind of ['user','matrix']){app.page='details';app.changeKind(kind);awa
  await app.startEdit('status');await tick();assert.equal(app.editing,true);assert.deepEqual(app.rawColumns.map(c=>c.key),['workflow']);assert.ok(document.querySelector('.raw-field select'));
  app.draft.workflow='已确认误报';app.editReason='核实原始依据';await app.saveEdit();const patch=requests.filter(r=>r.method==='PATCH').at(-1);assert.deepEqual(patch.body.changes,{workflow:'已确认误报'});assert.equal(app.drawer.violation,'原风险原因，保持原样');assert.equal(app.drawer.draftPending,true);app.closeDrawer();
 }
-for(const page of ['overview','summary','details','sources','data','rules']){app.page=page;await tick();assert.ok(document.querySelector('main'));assert.ok(!document.querySelector('main').textContent.includes('违规'));}
+for(const page of ['overview','summary','details','sources','data','rules']){app.page=page;await tick();assert.ok(document.querySelector('main'));assert.ok(!document.querySelector('.page-heading .eyebrow'));assert.ok(document.querySelector('.page-heading h1'));assert.ok(!document.querySelector('main').textContent.includes('违规'));}
+assert.ok(!document.querySelector('.brand small'));
 assert.ok(!document.querySelector('.brand').textContent.includes('审查报告系统'));assert.ok(!document.body.textContent.includes('FINANCE'));assert.deepEqual(errors,[]);
 console.log(JSON.stringify({passed:true,pages:6,statusSelectors:2,statusEdits:2,matrixNames:6,vueErrors:0}));process.exit(0);

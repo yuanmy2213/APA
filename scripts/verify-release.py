@@ -19,9 +19,9 @@ import zipfile
 import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[1]
-JAR = ROOT / 'finance-access-review-1.2.0.jar'
+JAR = ROOT / 'finance-access-review-1.2.1.jar'
 if not JAR.is_file():
-    JAR = ROOT / 'target/finance-access-review-1.2.0.jar'
+    JAR = ROOT / 'target/finance-access-review-1.2.1.jar'
 EXAMPLE = ROOT / 'examples/财经法务_四类核心数据_演示.xlsx'
 
 with tempfile.TemporaryDirectory(prefix='finance-review-release-') as temporary:
@@ -123,7 +123,10 @@ with tempfile.TemporaryDirectory(prefix='finance-review-release-') as temporary:
         assert '8项检查 · 第8项含6条矩阵细则' in html
         assert request('/api/me')['canPublish']
         assert request('/api/import-jobs') == []
-        assert 'rule-share-list' in html
+        assert 'check-donut-panel' in html and '前三项风险占比' in html
+        assert 'rule-share-list' not in html and 'class="eyebrow"' not in html
+        css = request('/styles.css?v=1.2.1', binary=True).decode()
+        assert 'font-size:22px;font-weight:700' in css
         before = request('/api/snapshots', 'POST')['id']
         dashboard = request('/api/dashboard?snapshotId=' + before)
         assert dashboard['overall']['authorizations'] is None
