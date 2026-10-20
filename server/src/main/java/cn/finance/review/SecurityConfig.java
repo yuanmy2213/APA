@@ -20,7 +20,7 @@ public class SecurityConfig {
   if(list.isEmpty())throw new IllegalStateException("正式运行必须配置 AA_PASSWORD 等账号密钥，或接入企业身份认证。");
   return new org.springframework.security.provisioning.InMemoryUserDetailsManager(list);
  }
- @Bean SecurityFilterChain security(HttpSecurity http)throws Exception {
+ @Bean @org.springframework.core.annotation.Order(2) SecurityFilterChain security(HttpSecurity http)throws Exception {
   return http.authorizeHttpRequests(a->a.requestMatchers("/api/**").authenticated().anyRequest().permitAll())
    .httpBasic(b->b.authenticationEntryPoint((req,res,e)->{res.setStatus(401);res.setContentType("application/json;charset=UTF-8");res.getWriter().write("{\"code\":\"UNAUTHENTICATED\",\"message\":\"请登录审查工作台\"}");}))
    .csrf(c->c.csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse()).sessionAuthenticationStrategy(new org.springframework.security.web.authentication.session.NullAuthenticatedSessionStrategy()))

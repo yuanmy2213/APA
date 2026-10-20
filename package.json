@@ -1,10 +1,10 @@
 {
   "name": "finance-access-review",
-  "version": "1.2.1",
+  "version": "1.3.0",
   "private": true,
   "type": "module",
   "description": "财经权限审查报告系统一期：Vue + Java",
   "scripts": {
-    "check": "node --check frontend/app.js && node --check frontend/api.js"
+    "check": "node --check frontend/app.js && node --check frontend/api.js && node --check frontend/record-fields.js"
   }
 }

@@ -1,0 +1,1050 @@
+openapi: 3.0.3
+info:
+  title: 财经权限审查数据接口
+  version: 1.0.0
+  description: 对应APA V1.3.0。复用导入、草稿、审计和发布，业务ID关联与历史兼容见调用说明。
+servers:
+- url: http://127.0.0.1:8080/apa/api/integration/v1
+  description: 带/apa前缀
+- url: http://127.0.0.1:8080/api/integration/v1
+  description: 根路径
+security:
+- integrationBearer: []
+paths:
+  /products/{product}/imports:
+    post:
+      summary: JSON上传四类核心数据
+      operationId: post_products_product_imports
+      responses:
+        '202':
+          description: 已受理，须轮询任务结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportJob'
+        default:
+          description: 认证、范围、版本或校验失败；见调用说明错误表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - name: product
+        in: path
+        required: true
+        schema:
+          type: string
+      - &id001
+        name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          minLength: 8
+          maxLength: 100
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ImportRequest'
+  /products/{product}/files:
+    post:
+      summary: 文件上传
+      operationId: post_products_product_files
+      responses:
+        '202':
+          description: 已受理，须轮询任务结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportJob'
+        default:
+          description: 认证、范围、版本或校验失败；见调用说明错误表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - name: product
+        in: path
+        required: true
+        schema:
+          type: string
+      - *id001
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+              - file
+              - sourceAsOf
+              properties:
+                file:
+                  type: string
+                  format: binary
+                sourceAsOf:
+                  type: string
+                  format: date-time
+                mode:
+                  type: string
+                  enum:
+                  - auto
+                  - user
+                  - matrix
+                  default: auto
+                rawCoverage:
+                  $ref: '#/components/schemas/Coverage'
+                riskCoverage:
+                  $ref: '#/components/schemas/Coverage'
+  /import-jobs/{id}:
+    get:
+      summary: 查询导入状态与进度
+      operationId: get_import_jobs_id
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportJob'
+        default:
+          description: 认证、范围、版本或校验失败；见调用说明错误表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+  /import-jobs/{id}/errors/page:
+    get:
+      summary: 分页读取全量校验错误
+      operationId: get_import_jobs_id_errors_page
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+        default:
+          description: 认证、范围、版本或校验失败；见调用说明错误表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: page
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+          default: 1
+      - name: pageSize
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 200
+          default: 100
+  /templates/{kind}:
+    get:
+      summary: 下载四类数据模板
+      operationId: get_templates_kind
+      responses:
+        '200':
+          description: Excel模板
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        default:
+          description: 认证、范围、版本或校验失败；见调用说明错误表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - name: kind
+        in: path
+        required: true
+        schema:
+          type: string
+          enum:
+          - user
+          - matrix
+          - all
+  /snapshots:
+    post:
+      summary: 创建当前接口产品范围的查询快照
+      operationId: post_snapshots
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+        default:
+          description: 认证、范围、版本或校验失败；见调用说明错误表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /source-records/query:
+    post:
+      summary: 分页查询原始授权或权限点
+      operationId: post_source_records_query
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+        default:
+          description: 认证、范围、版本或校验失败；见调用说明错误表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Query'
+  /findings/query:
+    post:
+      summary: 分页查询风险结果
+      operationId: post_findings_query
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+        default:
+          description: 认证、范围、版本或校验失败；见调用说明错误表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Query'
+  /products/{product}/drafts:
+    post:
+      summary: 复制已发布版本为草稿
+      operationId: post_products_product_drafts
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+        default:
+          description: 认证、范围、版本或校验失败；见调用说明错误表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - name: product
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - kind
+              properties:
+                kind:
+                  type: string
+                  enum:
+                  - user
+                  - matrix
+                  - both
+  /drafts/{id}:
+    get:
+      summary: 预览草稿数量、诊断与版本差异
+      operationId: get_drafts_id
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+        default:
+          description: 认证、范围、版本或校验失败；见调用说明错误表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+  /drafts/{id}/record:
+    get:
+      summary: 按历史内部UUID定位草稿副本
+      operationId: get_drafts_id_record
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+        default:
+          description: 认证、范围、版本或校验失败；见调用说明错误表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: originalId
+        in: query
+        required: true
+        schema:
+          type: string
+      - &id002
+        name: kind
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - user
+          - matrix
+      - name: source
+        in: query
+        schema:
+          type: boolean
+          default: false
+  /drafts/{id}/records/resolve:
+    post:
+      summary: 按业务ID定位草稿记录
+      operationId: post_drafts_id_records_resolve
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+        default:
+          description: 认证、范围、版本或校验失败；见调用说明错误表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Resolve'
+  /drafts/{id}/source-records/{row}:
+    patch:
+      summary: 修订原始数据副本
+      operationId: patch_drafts_id_source_records_row
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+        default:
+          description: 认证、范围、版本或校验失败；见调用说明错误表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: row
+        in: path
+        required: true
+        schema:
+          type: string
+      - &id003
+        name: If-Match
+        in: header
+        required: true
+        schema:
+          type: string
+        description: 记录recordVersion或草稿revision；缺少返回428，不匹配返回412
+      - *id002
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Patch'
+  /drafts/{id}/findings/{row}:
+    patch:
+      summary: 修订风险结果或处理状态
+      operationId: patch_drafts_id_findings_row
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+        default:
+          description: 认证、范围、版本或校验失败；见调用说明错误表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: row
+        in: path
+        required: true
+        schema:
+          type: string
+      - *id003
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Patch'
+  /drafts/{id}/publish:
+    post:
+      summary: 显式发布；需配置接口发布权限
+      operationId: post_drafts_id_publish
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+        default:
+          description: 认证、范围、版本或校验失败；见调用说明错误表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - *id003
+      - *id001
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - reason
+              properties:
+                reason:
+                  type: string
+                  minLength: 1
+                  maxLength: 2000
+                allowEmpty:
+                  type: boolean
+                  default: false
+components:
+  securitySchemes:
+    integrationBearer:
+      type: http
+      scheme: bearer
+      description: INTEGRATION_TOKEN，由部署环境注入
+  schemas:
+    Authorization:
+      type: object
+      additionalProperties: false
+      required:
+      - employeeId
+      - permissionName
+      properties:
+        employeeId:
+          type: string
+          maxLength: 150
+        userName:
+          type: string
+          maxLength: 150
+        department:
+          type: string
+          maxLength: 1000
+        deptCode:
+          type: string
+          maxLength: 100
+        personKind:
+          type: string
+          maxLength: 50
+        employmentClass:
+          type: string
+          maxLength: 50
+        userNamespace:
+          type: string
+          maxLength: 100
+        permissionName:
+          type: string
+          maxLength: 400
+        roleId:
+          type: string
+          maxLength: 150
+        roleType:
+          type: string
+          maxLength: 100
+        permissionType:
+          type: string
+          maxLength: 100
+        description:
+          type: string
+          maxLength: 10000
+        startAt:
+          type: string
+          maxLength: 1000
+        expiresAt:
+          type: string
+          maxLength: 1000
+        authorizationId:
+          type: string
+          maxLength: 200
+        application:
+          type: string
+          maxLength: 200
+        appId:
+          type: string
+          maxLength: 150
+        tenantId:
+          type: string
+          maxLength: 150
+        sourceSystem:
+          type: string
+          maxLength: 100
+    PermissionPoint:
+      type: object
+      additionalProperties: false
+      required:
+      - permissionCombinationId
+      - roleName
+      - setName
+      - pointId
+      properties:
+        permissionCombinationId:
+          type: string
+          maxLength: 200
+        roleName:
+          type: string
+          maxLength: 400
+        roleId:
+          type: string
+          maxLength: 150
+        roleType:
+          type: string
+          maxLength: 100
+        setName:
+          type: string
+          maxLength: 400
+        setId:
+          type: string
+          maxLength: 150
+        pointName:
+          type: string
+          maxLength: 600
+        pointId:
+          type: string
+          maxLength: 200
+        resourceType:
+          type: string
+          maxLength: 100
+        subtype:
+          type: string
+          maxLength: 100
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+          nullable: true
+        evidence:
+          type: string
+          maxLength: 10000
+        application:
+          type: string
+          maxLength: 200
+        appId:
+          type: string
+          maxLength: 150
+        tenantId:
+          type: string
+          maxLength: 150
+        sourceSystem:
+          type: string
+          maxLength: 100
+    UserRisk:
+      type: object
+      additionalProperties: false
+      required:
+      - authorizationId
+      - ruleCode
+      - risk
+      properties:
+        ruleCode:
+          type: string
+          description: 用户角色1—7，矩阵8a—8f
+        checkName:
+          type: string
+          maxLength: 400
+        risk:
+          type: string
+          enum:
+          - 高
+          - 中
+          - 低
+        workflow:
+          type: string
+          enum:
+          - 待核实
+          - 待人工确认
+          - 待复核
+          - 已确认风险
+          - 已整改
+          - 已确认误报
+        violation:
+          type: string
+          maxLength: 10000
+        advice:
+          type: string
+          maxLength: 10000
+        evidence:
+          type: string
+          maxLength: 10000
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+          nullable: true
+        employeeId:
+          type: string
+          maxLength: 150
+        userName:
+          type: string
+          maxLength: 150
+        department:
+          type: string
+          maxLength: 1000
+        permissionName:
+          type: string
+          maxLength: 400
+        roleId:
+          type: string
+          maxLength: 150
+        roleType:
+          type: string
+          maxLength: 100
+        permissionType:
+          type: string
+          maxLength: 100
+        description:
+          type: string
+          maxLength: 10000
+        startAt:
+          type: string
+          maxLength: 1000
+        expiresAt:
+          type: string
+          maxLength: 1000
+        authorizationId:
+          type: string
+          maxLength: 200
+        application:
+          type: string
+          maxLength: 200
+        appId:
+          type: string
+          maxLength: 150
+        tenantId:
+          type: string
+          maxLength: 150
+        sourceSystem:
+          type: string
+          maxLength: 100
+    MatrixRisk:
+      type: object
+      additionalProperties: false
+      required:
+      - permissionCombinationId
+      - ruleCode
+      properties:
+        ruleCode:
+          type: string
+          description: 用户角色1—7，矩阵8a—8f
+        checkName:
+          type: string
+          maxLength: 400
+        risk:
+          type: string
+          enum:
+          - 高
+          - 中
+          - 低
+        workflow:
+          type: string
+          enum:
+          - 待核实
+          - 待人工确认
+          - 待复核
+          - 已确认风险
+          - 已整改
+          - 已确认误报
+        violation:
+          type: string
+          maxLength: 10000
+        advice:
+          type: string
+          maxLength: 10000
+        evidence:
+          type: string
+          maxLength: 10000
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+          nullable: true
+        permissionCombinationId:
+          type: string
+          maxLength: 200
+        roleName:
+          type: string
+          maxLength: 400
+        roleId:
+          type: string
+          maxLength: 150
+        roleType:
+          type: string
+          maxLength: 100
+        setName:
+          type: string
+          maxLength: 400
+        setId:
+          type: string
+          maxLength: 150
+        pointName:
+          type: string
+          maxLength: 600
+        pointId:
+          type: string
+          maxLength: 200
+        resourceType:
+          type: string
+          maxLength: 100
+        subtype:
+          type: string
+          maxLength: 100
+        application:
+          type: string
+          maxLength: 200
+        appId:
+          type: string
+          maxLength: 150
+        tenantId:
+          type: string
+          maxLength: 150
+        sourceSystem:
+          type: string
+          maxLength: 100
+    AUTHDataset:
+      type: object
+      required:
+      - type
+      - rows
+      properties:
+        type:
+          type: string
+          enum:
+          - AUTH
+        rows:
+          type: array
+          maxItems: 100000
+          items:
+            $ref: '#/components/schemas/Authorization'
+    POINTDataset:
+      type: object
+      required:
+      - type
+      - rows
+      properties:
+        type:
+          type: string
+          enum:
+          - POINT
+        rows:
+          type: array
+          maxItems: 100000
+          items:
+            $ref: '#/components/schemas/PermissionPoint'
+    USER_RISKDataset:
+      type: object
+      required:
+      - type
+      - rows
+      properties:
+        type:
+          type: string
+          enum:
+          - USER_RISK
+        rows:
+          type: array
+          maxItems: 20000
+          items:
+            $ref: '#/components/schemas/UserRisk'
+    MATRIX_RISKDataset:
+      type: object
+      required:
+      - type
+      - rows
+      properties:
+        type:
+          type: string
+          enum:
+          - MATRIX_RISK
+        rows:
+          type: array
+          maxItems: 20000
+          items:
+            $ref: '#/components/schemas/MatrixRisk'
+    ImportRequest:
+      type: object
+      required:
+      - schemaVersion
+      - sourceAsOf
+      - datasets
+      properties:
+        schemaVersion:
+          type: string
+          enum:
+          - '1'
+        mode:
+          type: string
+          enum:
+          - auto
+          - user
+          - matrix
+          default: auto
+        rawCoverage:
+          $ref: '#/components/schemas/Coverage'
+        riskCoverage:
+          $ref: '#/components/schemas/Coverage'
+        sourceAsOf:
+          type: string
+          format: date-time
+        datasets:
+          type: array
+          minItems: 1
+          maxItems: 4
+          items:
+            oneOf:
+            - $ref: '#/components/schemas/AUTHDataset'
+            - $ref: '#/components/schemas/USER_RISKDataset'
+            - $ref: '#/components/schemas/POINTDataset'
+            - $ref: '#/components/schemas/MATRIX_RISKDataset'
+    Coverage:
+      type: string
+      enum:
+      - FULL
+      - PARTIAL
+      - UNKNOWN
+    ImportJob:
+      type: object
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+          enum:
+          - QUEUED
+          - RUNNING
+          - VALIDATED
+          - FAILED
+        draftId:
+          type: string
+          nullable: true
+        progress:
+          type: integer
+        phase:
+          type: string
+          nullable: true
+        currentSheet:
+          type: string
+          nullable: true
+        processedRows:
+          type: integer
+        completedSheets:
+          type: integer
+        errors:
+          type: object
+          nullable: true
+        preview:
+          type: object
+          nullable: true
+    Query:
+      type: object
+      required:
+      - snapshotId
+      - kind
+      properties:
+        snapshotId:
+          type: string
+        productId:
+          type: string
+        kind:
+          type: string
+          enum:
+          - user
+          - matrix
+        page:
+          type: integer
+          minimum: 1
+          default: 1
+        pageSize:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 20
+        q:
+          type: string
+          maxLength: 500
+        includeFalsePositive:
+          type: boolean
+          default: false
+        sortField:
+          type: string
+        sortDirection:
+          type: string
+          enum:
+          - asc
+          - desc
+        filters:
+          type: array
+          maxItems: 60
+          items:
+            type: object
+            required:
+            - field
+            - op
+            - value
+            properties:
+              field:
+                type: string
+              op:
+                type: string
+                enum:
+                - eq
+                - contains
+                - in
+                - gte
+                - lte
+              value: {}
+    Resolve:
+      type: object
+      required:
+      - kind
+      - businessId
+      properties:
+        kind:
+          type: string
+          enum:
+          - user
+          - matrix
+        source:
+          type: boolean
+          default: true
+        businessId:
+          type: string
+          minLength: 1
+          maxLength: 200
+        ruleCode:
+          type: string
+          description: source=false时必填
+        appId:
+          type: string
+        application:
+          type: string
+        tenantId:
+          type: string
+        sourceSystem:
+          type: string
+    Patch:
+      type: object
+      required:
+      - changes
+      - reason
+      properties:
+        changes:
+          type: object
+          minProperties: 1
+          description: 仅修改允许的普通字段；业务标识不可修改
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 2000
+    Error:
+      type: object
+      required:
+      - code
+      - message
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        requestId:
+          type: string

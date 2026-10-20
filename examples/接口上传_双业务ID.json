@@ -1,0 +1,66 @@
+{
+  "schemaVersion": "1",
+  "mode": "auto",
+  "rawCoverage": "FULL",
+  "riskCoverage": "FULL",
+  "sourceAsOf": "2026-10-20T10:00:00+08:00",
+  "datasets": [
+    {
+      "type": "AUTH",
+      "rows": [
+        {
+          "authorizationId": "AUTH-000001",
+          "employeeId": "L00566785",
+          "userName": "演示人员",
+          "permissionName": "演示业务角色",
+          "roleType": "业务操作权限",
+          "personKind": "IT人员",
+          "employmentClass": "雇员",
+          "appId": "DEMO-APP",
+          "tenantId": "DEMO-TENANT"
+        }
+      ]
+    },
+    {
+      "type": "USER_RISK",
+      "rows": [
+        {
+          "authorizationId": "AUTH-000001",
+          "ruleCode": "1",
+          "risk": "高",
+          "violation": "演示：IT人员持有业务操作权限。",
+          "advice": "按实际职责核实。"
+        }
+      ]
+    },
+    {
+      "type": "POINT",
+      "rows": [
+        {
+          "permissionCombinationId": "COMBO-000001",
+          "roleName": "演示系统管理角色",
+          "roleType": "系统管理权限",
+          "setName": "演示业务权限集",
+          "pointId": "000042",
+          "pointName": "演示业务编辑",
+          "subtype": "业务操作",
+          "appId": "DEMO-APP",
+          "tenantId": "DEMO-TENANT"
+        }
+      ]
+    },
+    {
+      "type": "MATRIX_RISK",
+      "rows": [
+        {
+          "permissionCombinationId": "COMBO-000001",
+          "ruleCode": "8a",
+          "risk": "高",
+          "violation": "演示：系统管理角色绑定业务操作能力。",
+          "confidence": 0.9,
+          "evidence": "演示数据，仅用于验证接口。"
+        }
+      ]
+    }
+  ]
+}

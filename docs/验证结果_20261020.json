@@ -1,0 +1,103 @@
+{
+  "version": "1.3.0",
+  "date": "2026-10-20T03:38:27.466721+00:00",
+  "baseCommit": "1921d07aeb66cb9b55cccac8cd7559d1065cd3d0",
+  "javaSuites": [
+    {
+      "name": "cn.finance.review.MigrationCompatibilityTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "name": "cn.finance.review.October20IntegrationTest",
+      "tests": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "name": "cn.finance.review.PhaseOneIntegrationTest",
+      "tests": 19,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  ],
+  "domScripts": 5,
+  "performance": {
+    "sources": 4000,
+    "findings": 1000,
+    "individualInserts": 0,
+    "jdbcBatchCalls": 14,
+    "cloneMs": 218.272448,
+    "pageRows": [
+      1,
+      100
+    ],
+    "pageDbCalls": [
+      14,
+      14
+    ],
+    "editorInputs": 24,
+    "appRenderCount": 1
+  },
+  "http": [
+    {
+      "contextPath": "/",
+      "integration_client": "not-run",
+      "packaged_http_flow": "passed",
+      "login_csrf": "passed",
+      "multipart_upload": "passed",
+      "publication_snapshot": "passed",
+      "source_recheck": "passed",
+      "restart_persistence": "passed",
+      "idless_complete_import": "passed",
+      "strong_duplicate_rejected": "passed",
+      "both_status_chains": "passed",
+      "risk_reasons_preserved": "passed",
+      "task_list_200": "passed",
+      "weak_scope_association": "passed",
+      "full_error_csv_pagination": "passed",
+      "version_diff": "passed",
+      "check_item_distribution": "passed",
+      "example_records": {
+        "authorizations": 3,
+        "user_risks": 3,
+        "matrix_risks": 1
+      }
+    },
+    {
+      "contextPath": "/apa",
+      "integration_client": "passed",
+      "packaged_http_flow": "passed",
+      "login_csrf": "passed",
+      "multipart_upload": "passed",
+      "publication_snapshot": "passed",
+      "source_recheck": "passed",
+      "restart_persistence": "passed",
+      "idless_complete_import": "passed",
+      "strong_duplicate_rejected": "passed",
+      "both_status_chains": "passed",
+      "risk_reasons_preserved": "passed",
+      "task_list_200": "passed",
+      "weak_scope_association": "passed",
+      "full_error_csv_pagination": "passed",
+      "version_diff": "passed",
+      "check_item_distribution": "passed",
+      "example_records": {
+        "authorizations": 3,
+        "user_risks": 3,
+        "matrix_risks": 1
+      }
+    }
+  ],
+  "startupPrefixCases": 3,
+  "openapiPaths": 15,
+  "jarSha256": "d105d160bb7a5541263295fa3e9e839765f1213d91a7df88d772f506fd1aecd7",
+  "limits": [
+    "未执行目标浏览器FPS与真实企业网络性能测试",
+    "未执行生产PostgreSQL、企业统一认证、真实业务报告或生产备份恢复验收"
+  ]
+}

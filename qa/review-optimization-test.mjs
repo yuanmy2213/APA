@@ -3,7 +3,7 @@ const {JSDOM}=createRequire(import.meta.url)(process.env.REVIEW_QA_JSDOM||'jsdom
 const errors=[];console.error=(...x)=>errors.push(x.join(' '));let failTaskList=false;const calls=[];
 const difference={summary:{added:1,removed:1,maintained:2,changed:0},byRule:[{id:'1',name:'IT人员不持有业务权限',oldCount:2,newCount:2,added:1,removed:1,maintained:1,changed:0}],byLevel:[],definition:'仅比较有效风险，移出不代表生产权限已整改。'};
 globalThis.fetch=async(url,opt={})=>{calls.push({url,...opt});let body=[];
- if(url==='/api/import-jobs'&&failTaskList)return new Response(JSON.stringify({message:'任务列表暂不可读，错误编号：test'}),{status:503});
+ if(url==='api/import-jobs'&&failTaskList)return new Response(JSON.stringify({message:'任务列表暂不可读，错误编号：test'}),{status:503});
  if(url.includes('/errors/page'))body={rows:[{sheet:'原始权限点明细数据',row:53,message:'重复记录；首次出现于第2行'}],total:1209,page:2,complete:true};
  else if(url.includes('/releases/compare'))body=difference;
  return new Response(JSON.stringify(body));

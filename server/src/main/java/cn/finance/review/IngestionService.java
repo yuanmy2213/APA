@@ -36,7 +36,7 @@ public class IngestionService {
     db.transaction(()->{
      var owned=db.one("SELECT * FROM import_job WHERE id=:id FOR UPDATE",Map.of("id",j.get("id")));require(lease.equals(str(owned,"leaseOwner"))&&str(owned,"status").equals("RUNNING"),409,"LEASE_LOST","任务已由其他实例恢复");
      List<String> chains=new ArrayList<>();if(parsed.data.containsKey("AUTH")||parsed.data.containsKey("USER_RISK"))chains.add("user");if(parsed.data.containsKey("POINT")||parsed.data.containsKey("MATRIX_RISK"))chains.add("matrix");
-     var draft=publications.newDraft(str(j,"productId"),map("releaseId",j.get("baseReleaseId"),"revision",j.get("baseRevision")),str(j,"createdBy"),chains);
+     var draft=publications.newDraft(str(j,"productId"),map("releaseId",j.get("baseReleaseId"),"revision",j.get("baseRevision")),str(j,"createdBy"),chains,parsed.data.keySet());
      List<Map<String,Object>> summary=new ArrayList<>();
      for(String chain:chains){String ds=str(draft,chain+"DatasetId");String sourceType=chain.equals("user")?"AUTH":"POINT",riskType=chain.equals("user")?"USER_RISK":"MATRIX_RISK";boolean raw=parsed.data.containsKey(sourceType),risk=parsed.data.containsKey(riskType);
       if(raw){
@@ -44,8 +44,8 @@ public class IngestionService {
        for(var row:parsed.data.get(sourceType)){var r=Fields.select(row,Fields.sourceColumns(chain));String rowId=id();r.putAll(map("id",rowId,"datasetId",ds,"recordKey",Fields.storageKey(row,chain,rowId),"sourceAssetId",j.get("assetId"),"sourceSheet",row.get("sourceSheet"),"sourceRow",row.get("sourceRow"),"baseRowId",null,"recordVersion",1));if(chain.equals("user"))r.put("userKey",Fields.identity(r));batch.add(r);if(batch.size()==500){db.insertBatch(Fields.sourceTable(chain),batch);batch.clear();}}
        db.insertBatch(Fields.sourceTable(chain),batch);db.update("UPDATE review_dataset SET raw_coverage=:c,raw_as_of=:t WHERE id=:id",map("c",j.get("rawCoverage"),"t",j.get("sourceAsOf"),"id",ds));
       }
-      if(risk){db.update("DELETE FROM "+Fields.detailTable(chain)+" WHERE finding_id IN (SELECT id FROM risk_finding WHERE dataset_id=:id)",Map.of("id",ds));db.update("DELETE FROM risk_finding WHERE dataset_id=:id",Map.of("id",ds));for(var row:parsed.data.get(riskType)){var f=new LinkedHashMap<>(row);f.putAll(map("id",id(),"datasetId",ds,"chain",chain,"auditedSourceId",null,"currentSourceId",null,"linkStatus","UNLINKED","linkReason","NO_PAIRED_SOURCE","linkCandidates",0,"baseFindingId",null,"sourceAssetId",j.get("assetId"),"recordVersion",1));publications.insertFinding(f,chain);}db.update("UPDATE review_dataset SET risk_coverage=:c,risk_as_of=:t WHERE id=:id",map("c",j.get("riskCoverage"),"t",j.get("sourceAsOf"),"id",ds));}
-      if(raw)relink(ds,chain,risk);
+      if(risk){db.update("DELETE FROM "+Fields.detailTable(chain)+" WHERE finding_id IN (SELECT id FROM risk_finding WHERE dataset_id=:id)",Map.of("id",ds));db.update("DELETE FROM risk_finding WHERE dataset_id=:id",Map.of("id",ds));List<Map<String,Object>> riskBatch=new ArrayList<>();for(var row:parsed.data.get(riskType)){var f=new LinkedHashMap<>(row);f.putAll(map("id",id(),"datasetId",ds,"chain",chain,"auditedSourceId",null,"currentSourceId",null,"linkStatus","UNLINKED","linkReason","NO_PAIRED_SOURCE","linkCandidates",0,"baseFindingId",null,"sourceAssetId",j.get("assetId"),"recordVersion",1));riskBatch.add(f);if(riskBatch.size()==500){publications.insertFindings(riskBatch,chain);riskBatch.clear();}}publications.insertFindings(riskBatch,chain);db.update("UPDATE review_dataset SET risk_coverage=:c,risk_as_of=:t WHERE id=:id",map("c",j.get("riskCoverage"),"t",j.get("sourceAsOf"),"id",ds));}
+      if(raw||risk)relink(ds,chain,risk);
       db.update("UPDATE review_dataset SET source_as_of=:t,asset_id=:a WHERE id=:id",map("t",j.get("sourceAsOf"),"a",j.get("assetId"),"id",ds));
       summary.add(map("chain",chain,"rawReplaced",raw,"riskReplaced",risk,"rawCount",raw?parsed.data.get(sourceType).size():null,"riskCount",risk?parsed.data.get(riskType).size():null,"links",linkSummary(ds),"rows",risk?parsed.data.get(riskType).stream().limit(3).toList():raw?parsed.data.get(sourceType).stream().limit(3).toList():List.of()));
      }
@@ -56,9 +56,16 @@ public class IngestionService {
  }
  private void fail(Map<String,Object> job,String lease,Map<String,Object> errors,Map<String,Object> preview){db.update("UPDATE import_job SET status='FAILED',phase='FAILED',progress=100,errors=:e,preview=:p WHERE id=:id AND lease_owner=:l AND status='RUNNING'",map("e",db.encode(errors),"p",db.encode(preview),"id",job.get("id"),"l",lease));}
  public List<Map<String,Object>> linkSummary(String dataset){return db.rows("SELECT link_status,COALESCE(link_reason,'LEGACY_NOT_DIAGNOSED') AS link_reason,COUNT(*) AS count FROM risk_finding WHERE dataset_id=:d GROUP BY link_status,link_reason ORDER BY link_status,link_reason",map("d",dataset));}
- void relink(String dataset,String chain,boolean newRisk){var linker=new FindingLinker(db.rows("SELECT * FROM "+Fields.sourceTable(chain)+" WHERE dataset_id=:id",Map.of("id",dataset)),chain);
+ void relink(String dataset,String chain,boolean newRisk){
+  var sources=db.rows("SELECT * FROM "+Fields.sourceTable(chain)+" WHERE dataset_id=:id",Map.of("id",dataset));
+  var linker=new FindingLinker(sources,chain);Map<String,Map<String,Object>> sourceById=new HashMap<>();for(var source:sources)sourceById.put(str(source,"id"),source);
+  List<Map<String,Object>> links=new ArrayList<>(),ids=new ArrayList<>();
   for(var finding:publications.findings(dataset,chain)){var match=linker.match(finding);String workflow=newRisk?str(finding,"workflow"):"待复核";
-   db.update("UPDATE risk_finding SET current_source_id=:current,audited_source_id=:audited,link_status=:status,link_method=:method,link_reason=:reason,link_detail=:detail,link_candidates=:candidates,workflow=:workflow WHERE id=:id",map("current",match.sourceId(),"audited",newRisk?match.sourceId():finding.get("auditedSourceId"),"status",match.status(),"method",match.method(),"reason",match.reason(),"detail",db.encode(match.detail()),"candidates",match.candidates(),"workflow",workflow,"id",finding.get("id")));
+   links.add(map("current",match.sourceId(),"audited",newRisk?match.sourceId():finding.get("auditedSourceId"),"status",match.status(),"method",match.method(),"reason",match.reason(),"detail",db.encode(match.detail()),"candidates",match.candidates(),"workflow",workflow,"id",finding.get("id")));
+   if(match.sourceId()!=null){var source=sourceById.get(match.sourceId());var enriched=Fields.select(finding,Fields.detailColumns(chain));for(String key:Fields.detailColumns(chain))if(str(finding,key).isBlank()&&!str(source,key).isBlank())enriched.put(key,source.get(key));enriched.put("id",finding.get("id"));ids.add(enriched);}
+   if(links.size()==500){writeLinks(chain,links,ids);links.clear();ids.clear();}
   }
+  writeLinks(chain,links,ids);
  }
+ private void writeLinks(String chain,List<Map<String,Object>> links,List<Map<String,Object>> ids){db.updateBatch("UPDATE risk_finding SET current_source_id=:current,audited_source_id=:audited,link_status=:status,link_method=:method,link_reason=:reason,link_detail=:detail,link_candidates=:candidates,workflow=:workflow WHERE id=:id",links);db.updateBatch("UPDATE "+Fields.detailTable(chain)+" SET "+String.join(",",Fields.detailColumns(chain).stream().map(k->snake(k)+"=:"+k).toList())+" WHERE finding_id=:id",ids);}
 }

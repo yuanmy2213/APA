@@ -1,4 +1,4 @@
-# APA · 财经权限审查报告系统一期 V1.2.1
+# APA · 财经权限审查报告系统一期 V1.3.0
 
 财经账号权限审查 Finance Account Permission Audit：审查财经领域产品的用户权限数据（iauth/公服），检查用户权限、权限设计是否符合要求（IT权限与业务权限隔离、SOD职责分离、特权账号管理、非雇员权限控制等）。
 
@@ -31,7 +31,7 @@
 - `server/`：Java 后端、数据库迁移与集成测试。
 - `prototype/`：[高保真原型源码及启动方法](prototype/README.md)，[在线预览](https://finance-access-review-20261016.garden-rook-7646.chatgpt.site/)，不连接 Java 数据库。
 - `docs/`：[总体架构、一期详细设计、原型交互及验证记录](docs/README.md)。
-- `pom.xml`：执行 `mvn test`，然后 `mvn package`；产物为 `target/finance-access-review-1.2.1.jar`。
+- `pom.xml`：执行 `mvn test`，然后 `mvn package`；产物为 `target/finance-access-review-1.3.0.jar`。
 
 可重复验证：`mvn test`；`python3 scripts/verify-release.py`（需先打包）；`cd qa && npm install && npm test`（仅DOM测试需要Node）。
 
@@ -70,3 +70,16 @@
 正式前端与prototype同步恢复按检查项占比的环形图：中心“前三项风险占比”与整数百分比，右侧展示前三项检查名和风险条数。侧栏名称22px加粗，删除页面及弹窗冗余小标题。保留风险原因、误报剔除、草稿发布、关联诊断、全量错误、版本对比和导入进度。
 
 本次为UI修订，无新增数据库迁移。Java打包、Docker及启动脚本统一到1.2.1；升级先备份数据库与文件目录，然后构建并替换JAR，沿用原配置与data目录。设计、用例与验证入口见[文档目录](docs/README.md)，范围及复现步骤见[发布说明](docs/发布说明_V1.2.1.md)。
+
+## V1.3.0 · 路径、业务ID、性能与接口（2026-10-20）
+
+- 合入相对API路径与CONTEXT_PATH配置。Java应用默认根路径；发布包默认/apa，静态资源与全部API跟随前缀。
+- 原始权限点新增权限组合ID，矩阵风险使用同名业务外键；用户角色风险按授权记录ID关联。新模板、筛选、下钻、导出均支持；旧Excel和历史库自动兼容，不改风险原因。
+- 草稿/导入按500条批次写入，查询去除逐行SQL；编辑表单独立渲染，防止重复建草稿，保存后局部更新，取消过期搜索请求。
+- 开放受控JSON/文件上传与修订接口。文档：[调用说明](docs/数据接口调用说明_V1.md)、[OpenAPI](docs/openapi-integration-v1.yaml)，客户端：[Python标准库脚本](scripts/integration-client.py)。
+
+构建：mvn package。生成部署包：python3 scripts/package-release.py；将target/package/finance-access-review复制到独立部署目录，设置数据库/账号/存储后运行bin/start.sh。启动模板来自[deploy/bin/start.sh](deploy/bin/start.sh)，不再依赖包目录里的未跟踪手改。默认生产profile，体验可设SPRING_PROFILES_ACTIVE=demo。升级需备份并保留原数据库和文件目录，启动自动执行V3，不删除data。
+
+接口需配置INTEGRATION_TOKEN（至少32字符）及INTEGRATION_PRODUCTS；上传/修订先形成草稿，默认由AA/质量运营发布，按流程可设置INTEGRATION_CAN_PUBLISH=true并显式调用发布接口。浏览器登录与CSRF行为保留。
+
+当前设计与测试入口：[docs/README.md](docs/README.md)。本轮验证用例：[10月20日用例](docs/测试用例_20261020.md)。

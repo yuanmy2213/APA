@@ -1,6 +1,8 @@
 server:
   port: ${PORT:8080}
   address: ${BIND_ADDRESS:127.0.0.1}
+  servlet:
+    context-path: ${CONTEXT_PATH:}
   error:
     include-message: never
 spring:
@@ -20,6 +22,10 @@ audit:
   demo: false
   storage: ${FILE_STORAGE:./data/files}
   product-scope: ${PRODUCT_SCOPE:P06}
+  integration:
+    token: ${INTEGRATION_TOKEN:}
+    products: ${INTEGRATION_PRODUCTS:}
+    can-publish: ${INTEGRATION_CAN_PUBLISH:false}
   accounts:
     aa: ${AA_PASSWORD:}
     leader: ${LEADER_PASSWORD:}

@@ -19,17 +19,24 @@ import zipfile
 import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[1]
-JAR = ROOT / 'finance-access-review-1.2.1.jar'
+JAR = ROOT / 'finance-access-review-1.3.0.jar'
 if not JAR.is_file():
-    JAR = ROOT / 'target/finance-access-review-1.2.1.jar'
+    JAR = ROOT / 'target/finance-access-review-1.3.0.jar'
 EXAMPLE = ROOT / 'examples/财经法务_四类核心数据_演示.xlsx'
+CONTEXT = os.environ.get('REVIEW_TEST_CONTEXT_PATH', '').rstrip('/')
+if CONTEXT and not CONTEXT.startswith('/'):
+    raise ValueError('REVIEW_TEST_CONTEXT_PATH应以/开头')
+VERIFY_INTEGRATION = os.environ.get('REVIEW_TEST_INTEGRATION') == '1'
+TEST_TOKEN = 'synthetic-http-integration-token-20261020'
+with zipfile.ZipFile(JAR) as archive:
+    assert archive.testzip() is None, 'JAR完整性校验失败'
 
 with tempfile.TemporaryDirectory(prefix='finance-review-release-') as temporary:
     folder = Path(temporary)
     with socket.socket() as sock:
         sock.bind(('127.0.0.1', 0))
         port = sock.getsockname()[1]
-    origin = f'http://127.0.0.1:{port}'
+    origin = f'http://127.0.0.1:{port}' + CONTEXT
     auth = 'Basic ' + base64.b64encode(b'aa:aa-demo-2026').decode()
     client = urllib.request.build_opener(urllib.request.ProxyHandler({}), urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
     csrf = {}
@@ -95,7 +102,8 @@ with tempfile.TemporaryDirectory(prefix='finance-review-release-') as temporary:
 
     def start():
         log = (folder / 'application.log').open('ab')
-        process = subprocess.Popen(['java', '-Xms128m', '-Xmx1g', '-jar', str(JAR), '--spring.profiles.active=demo', f'--server.port={port}', '--server.address=127.0.0.1', f'--spring.datasource.url=jdbc:h2:file:{folder / "review"};MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE', f'--audit.storage={folder / "files"}'], cwd=folder, stdout=log, stderr=subprocess.STDOUT)
+        process_env = {**os.environ, 'INTEGRATION_TOKEN': TEST_TOKEN if VERIFY_INTEGRATION else '', 'INTEGRATION_PRODUCTS': 'P13' if VERIFY_INTEGRATION else '', 'INTEGRATION_CAN_PUBLISH': 'true' if VERIFY_INTEGRATION else 'false'}
+        process = subprocess.Popen(['java', '-Xms128m', '-Xmx1g', '-jar', str(JAR), '--spring.profiles.active=demo', f'--server.port={port}', '--server.address=127.0.0.1', '--server.servlet.context-path=' + CONTEXT, f'--spring.datasource.url=jdbc:h2:file:{folder / "review"};MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE', f'--audit.storage={folder / "files"}'], cwd=folder, stdout=log, stderr=subprocess.STDOUT, env=process_env)
         for _ in range(120):
             if process.poll() is not None:
                 raise RuntimeError((folder / 'application.log').read_text()[-4000:])
@@ -117,6 +125,9 @@ with tempfile.TemporaryDirectory(prefix='finance-review-release-') as temporary:
         log.close()
     process, log = start()
     try:
+        if CONTEXT:
+            with client.open(urllib.request.Request(origin, headers={'Authorization': auth}), timeout=30) as entry:
+                assert entry.geturl().split('?')[0].endswith(CONTEXT + '/'), '应用入口未规范化到尾斜杠'
         html = request('/', binary=True).decode()
         assert 'FINANCE ACCOUNT PERMISSION AUDIT' not in html
         assert '财经权限，全量审查' in html
@@ -125,8 +136,10 @@ with tempfile.TemporaryDirectory(prefix='finance-review-release-') as temporary:
         assert request('/api/import-jobs') == []
         assert 'check-donut-panel' in html and '前三项风险占比' in html
         assert 'rule-share-list' not in html and 'class="eyebrow"' not in html
-        css = request('/styles.css?v=1.2.1', binary=True).decode()
+        css = request('/styles.css?v=1.3.0', binary=True).decode()
         assert 'font-size:22px;font-weight:700' in css
+        assert "fetch('api'+path" in request('/api.js', binary=True).decode()
+        assert 'RecordFields' in request('/record-fields.js', binary=True).decode()
         before = request('/api/snapshots', 'POST')['id']
         dashboard = request('/api/dashboard?snapshotId=' + before)
         assert dashboard['overall']['authorizations'] is None
@@ -222,6 +235,54 @@ with tempfile.TemporaryDirectory(prefix='finance-review-release-') as temporary:
         assert len(distribution) == 8 and sum(r['count'] for r in distribution) == expected['total']
         delta = request('/api/products/P06/releases/compare')
         assert delta['summary']['removed'] == 1
+
+        if VERIFY_INTEGRATION:
+            api_root = origin + '/api/integration/v1'
+            machine_opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+            def machine(path, method='GET', body=None, token=TEST_TOKEN, headers=None):
+                h = {'Authorization': 'Bearer ' + token, **(headers or {})}
+                if body is not None:
+                    body = json.dumps(body, ensure_ascii=False).encode()
+                    h['Content-Type'] = 'application/json'
+                with machine_opener.open(urllib.request.Request(api_root + path, data=body, method=method, headers=h), timeout=60) as response:
+                    return json.load(response)
+            def cli(*arguments):
+                result = subprocess.run([os.sys.executable, str(ROOT / 'scripts/integration-client.py'), '--base-url', origin, '--product', 'P13', *arguments], capture_output=True, text=True, timeout=120, env={**os.environ, 'APA_API_TOKEN': TEST_TOKEN})
+                assert result.returncode == 0, result.stderr
+                return json.loads(result.stdout)
+            try:
+                machine('/snapshots', 'POST', {}, token='invalid')
+                raise AssertionError('Invalid API token accepted')
+            except urllib.error.HTTPError as error:
+                assert error.code == 401
+            job = cli('upload-json', str(ROOT / 'examples/接口上传_双业务ID.json'), '--wait')
+            assert job['status'] == 'VALIDATED', job
+            published = cli('publish', '--draft', job['draftId'], '--reason', '验证机器身份上传与发布')
+            snap = machine('/snapshots', 'POST', {})['id']
+            query = {'snapshotId': snap, 'productId': 'P13', 'kind': 'matrix', 'filters': [{'field': 'permissionCombinationId', 'op': 'eq', 'value': 'COMBO-000001'}]}
+            original = machine('/source-records/query', 'POST', query)['rows'][0]
+            finding = machine('/findings/query', 'POST', query)['rows'][0]
+            assert finding['currentSourceId'] == original['id'] and finding['linkMethod'] == 'COMBINATION_ID'
+            assert original['pointId'] == '000042'
+            edit = cli('patch-source', '--kind', 'matrix', '--business-id', 'COMBO-000001', '--changes', '{"pointName":"接口客户端修订名称"}', '--reason', '核对权限点描述')
+            assert edit['publicationRequired'] and edit['affected'] == 1
+            cli('publish', '--draft', edit['draftId'], '--reason', '发布客户端修订')
+            fresh = machine('/snapshots', 'POST', {})['id']
+            assert machine('/source-records/query', 'POST', {**query, 'snapshotId': fresh})['rows'][0]['pointName'] == '接口客户端修订名称'
+            assert machine('/source-records/query', 'POST', query)['rows'][0]['pointName'] == original['pointName']
+            try:
+                machine('/source-records/query', 'POST', {**query, 'productId': 'P06'})
+                raise AssertionError('API product scope bypassed')
+            except urllib.error.HTTPError as error:
+                assert error.code == 404
+            # File uploads use the same server-to-server surface; duplicates retain full errors.
+            invalid = folder / 'duplicate.csv'
+            invalid.write_text('权限组合ID,角色名称,权限集名称,权限点ID\nSAME,角色,权限集,00001\nSAME,角色,权限集,00001\n')
+            failed = cli('upload-file', str(invalid), '--source-as-of', '2026-10-20T10:00:00+08:00', '--raw-coverage', 'FULL', '--wait')
+            assert failed['status'] == 'FAILED' and failed['errors']['count'] == 1
+            errors = machine('/import-jobs/' + failed['id'] + '/errors/page')
+            assert errors['total'] == 1 and 'SAME' in errors['rows'][0]['businessKey']
+            expected = request('/api/dashboard?snapshotId=' + request('/api/snapshots', 'POST')['id'])['overall']
     finally:
         stop(process, log)
     process, log = start()
@@ -233,4 +294,4 @@ with tempfile.TemporaryDirectory(prefix='finance-review-release-') as temporary:
         assert request('/api/source-records/query', 'POST', {**q, 'snapshotId': snapshot, 'productId': 'P07'})['total'] == 2
     finally:
         stop(process, log)
-    print(json.dumps({'packaged_http_flow': 'passed', 'login_csrf': 'passed', 'multipart_upload': 'passed', 'publication_snapshot': 'passed', 'source_recheck': 'passed', 'restart_persistence': 'passed', 'idless_complete_import': 'passed', 'strong_duplicate_rejected': 'passed', 'both_status_chains': 'passed', 'risk_reasons_preserved': 'passed', 'task_list_200': 'passed', 'weak_scope_association': 'passed', 'full_error_csv_pagination': 'passed', 'version_diff': 'passed', 'check_item_distribution': 'passed', 'example_records': {'authorizations': 3, 'user_risks': 3, 'matrix_risks': 1}}))
+    print(json.dumps({'contextPath': CONTEXT or '/', 'integration_client': 'passed' if VERIFY_INTEGRATION else 'not-run', 'packaged_http_flow': 'passed', 'login_csrf': 'passed', 'multipart_upload': 'passed', 'publication_snapshot': 'passed', 'source_recheck': 'passed', 'restart_persistence': 'passed', 'idless_complete_import': 'passed', 'strong_duplicate_rejected': 'passed', 'both_status_chains': 'passed', 'risk_reasons_preserved': 'passed', 'task_list_200': 'passed', 'weak_scope_association': 'passed', 'full_error_csv_pagination': 'passed', 'version_diff': 'passed', 'check_item_distribution': 'passed', 'example_records': {'authorizations': 3, 'user_risks': 3, 'matrix_risks': 1}}))

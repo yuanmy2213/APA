@@ -21,13 +21,13 @@ export const MATRIX_RULES = [
   {id:'8f', name:'“审计权限”角色不允许绑定业务操作、IT运维特权权限点', role:'审计权限', forbidden:['业务操作','业务审批','业务转审','IT运维特权','业务管控']}
 ];
 export const USER_COLUMNS = [
-  ['checkItem','检查项',90],['checkName','检查项名称',360],['employeeId','用户工号',160],['userName','用户名称',110],['department','用户部门',205],['permissionName','权限名称',190],['roleType','角色类型',145],['permissionType','权限类型',135],['description','功能描述',260],['startAt','启用时间',135],['expiresAt','有效期',135],['authorizationId','授权ID',185],['risk','风险等级',105],['application','所属应用',165],['violation','风险明细说明',295],['advice','整改建议',295],['workflow','处理状态',130]
+  ['checkItem','检查项',90],['checkName','检查项名称',360],['employeeId','用户工号',160],['userName','用户名称',110],['department','用户部门',205],['permissionName','权限名称',190],['roleType','角色类型',145],['permissionType','权限类型',135],['description','功能描述',260],['startAt','启用时间',135],['expiresAt','有效期',135],['authorizationId','授权记录ID',185],['risk','风险等级',105],['application','所属应用',165],['violation','风险明细说明',295],['advice','整改建议',295],['workflow','处理状态',130]
 ].map(([key,label,width])=>({key,label,width}));
 export const MATRIX_COLUMNS = [
-  ['subcheck','检查细项',110],['roleName','角色名称',180],['roleType','角色类型',145],['setName','权限集名称',180],['pointName','权限点名称',190],['pointId','权限点ID',180],['resourceType','资源类型',135],['subtype','权限细分类型',145],['violation','风险原因',280],['confidence','置信度',110],['evidence','判定依据',310],['risk','风险等级',105],['workflow','处理状态',130]
+  ['subcheck','检查细项',110],['permissionCombinationId','权限组合ID',240],['roleName','角色名称',180],['roleType','角色类型',145],['setName','权限集名称',180],['pointName','权限点名称',190],['pointId','权限点ID',180],['resourceType','资源类型',135],['subtype','权限细分类型',145],['violation','风险原因',280],['confidence','置信度',110],['evidence','判定依据',310],['risk','风险等级',105],['workflow','处理状态',130]
 ].map(([key,label,width])=>({key,label,width}));
 export const DEFAULT_USER_COLUMNS = ['checkItem','employeeId','userName','department','permissionName','roleType','risk','workflow','violation'];
-export const DEFAULT_MATRIX_COLUMNS = ['subcheck','roleName','roleType','pointName','subtype','violation','confidence','workflow'];
+export const DEFAULT_MATRIX_COLUMNS = ['subcheck','permissionCombinationId','roleName','roleType','pointName','subtype','violation','confidence','workflow'];
 export const PRODUCT_DEFINITIONS = [
   ['财经前台产品','layout',18360,4080,62,'财经门户'],
   ['账务交易产品','receipt',16480,3760,104,'账务交易平台'],
