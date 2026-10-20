@@ -2,7 +2,7 @@ openapi: 3.0.3
 info:
   title: 财经权限审查数据接口
   version: 1.0.0
-  description: 对应APA V1.3.0。复用导入、草稿、审计和发布，业务ID关联与历史兼容见调用说明。
+  description: 对应APA V1.4.0。每行产品名称与目标产品一致，业务ID显式关联；按首次上线建库，无旧文件或旧库迁移承诺。
 servers:
 - url: http://127.0.0.1:8080/apa/api/integration/v1
   description: 带/apa前缀
@@ -510,9 +510,16 @@ components:
       type: object
       additionalProperties: false
       required:
+      - productName
       - employeeId
       - permissionName
       properties:
+        productName:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: 产品中文全名；每行必填，与请求路径中产品ID对应名称一致。
+          example: 财经法务产品
         employeeId:
           type: string
           maxLength: 150
@@ -574,11 +581,18 @@ components:
       type: object
       additionalProperties: false
       required:
+      - productName
       - permissionCombinationId
       - roleName
       - setName
       - pointId
       properties:
+        productName:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: 产品中文全名；每行必填，与请求路径中产品ID对应名称一致。
+          example: 财经法务产品
         permissionCombinationId:
           type: string
           maxLength: 200
@@ -633,10 +647,17 @@ components:
       type: object
       additionalProperties: false
       required:
+      - productName
       - authorizationId
       - ruleCode
       - risk
       properties:
+        productName:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: 产品中文全名；每行必填，与请求路径中产品ID对应名称一致。
+          example: 财经法务产品
         ruleCode:
           type: string
           description: 用户角色1—7，矩阵8a—8f
@@ -721,9 +742,16 @@ components:
       type: object
       additionalProperties: false
       required:
+      - productName
       - permissionCombinationId
       - ruleCode
       properties:
+        productName:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: 产品中文全名；每行必填，与请求路径中产品ID对应名称一致。
+          example: 财经法务产品
         ruleCode:
           type: string
           description: 用户角色1—7，矩阵8a—8f

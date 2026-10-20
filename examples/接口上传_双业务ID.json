@@ -9,6 +9,7 @@
       "type": "AUTH",
       "rows": [
         {
+          "productName": "财经法务产品",
           "authorizationId": "AUTH-000001",
           "employeeId": "L00566785",
           "userName": "演示人员",
@@ -25,6 +26,7 @@
       "type": "USER_RISK",
       "rows": [
         {
+          "productName": "财经法务产品",
           "authorizationId": "AUTH-000001",
           "ruleCode": "1",
           "risk": "高",
@@ -37,6 +39,7 @@
       "type": "POINT",
       "rows": [
         {
+          "productName": "财经法务产品",
           "permissionCombinationId": "COMBO-000001",
           "roleName": "演示系统管理角色",
           "roleType": "系统管理权限",
@@ -53,6 +56,7 @@
       "type": "MATRIX_RISK",
       "rows": [
         {
+          "productName": "财经法务产品",
           "permissionCombinationId": "COMBO-000001",
           "ruleCode": "8a",
           "risk": "高",

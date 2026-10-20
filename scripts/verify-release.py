@@ -19,9 +19,9 @@ import zipfile
 import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[1]
-JAR = ROOT / 'finance-access-review-1.3.0.jar'
+JAR = ROOT / 'finance-access-review-1.4.0.jar'
 if not JAR.is_file():
-    JAR = ROOT / 'target/finance-access-review-1.3.0.jar'
+    JAR = ROOT / 'target/finance-access-review-1.4.0.jar'
 EXAMPLE = ROOT / 'examples/财经法务_四类核心数据_演示.xlsx'
 CONTEXT = os.environ.get('REVIEW_TEST_CONTEXT_PATH', '').rstrip('/')
 if CONTEXT and not CONTEXT.startswith('/'):
@@ -80,6 +80,10 @@ with tempfile.TemporaryDirectory(prefix='finance-review-release-') as temporary:
         with zipfile.ZipFile(result, 'w', zipfile.ZIP_DEFLATED) as out:
             for entry in source.infolist():
                 content = source.read(entry.filename)
+                if entry.filename == 'xl/sharedStrings.xml':
+                    content = content.decode('utf-8').replace('财经法务产品','支付清算产品').encode('utf-8')
+                elif entry.filename.startswith('xl/worksheets/sheet') and entry.filename.endswith('.xml'):
+                    content = content.decode('utf-8').replace('财经法务产品','支付清算产品').encode('utf-8')
                 if entry.filename in targets:
                     root = ET.fromstring(content)
                     rows = root.findall('.//s:sheetData/s:row', ns)
@@ -136,7 +140,7 @@ with tempfile.TemporaryDirectory(prefix='finance-review-release-') as temporary:
         assert request('/api/import-jobs') == []
         assert 'check-donut-panel' in html and '前三项风险占比' in html
         assert 'rule-share-list' not in html and 'class="eyebrow"' not in html
-        css = request('/styles.css?v=1.3.0', binary=True).decode()
+        css = request('/styles.css?v=1.4.0', binary=True).decode()
         assert 'font-size:22px;font-weight:700' in css
         assert "fetch('api'+path" in request('/api.js', binary=True).decode()
         assert 'RecordFields' in request('/record-fields.js', binary=True).decode()
@@ -185,7 +189,7 @@ with tempfile.TemporaryDirectory(prefix='finance-review-release-') as temporary:
         assert request('/api/dashboard?snapshotId=' + snapshot)['overall']['recheck'] == 0
         # No authorization ID: both identical rows must survive parse, publication and restart.
         row = 'L00666785,重复角色,重复人员,IT人员,雇员'
-        idless = upload_csv('P07', '用户工号,权限名称,用户名称,人员类别,是否雇员\n' + row + '\n' + row + '\n')
+        idless = upload_csv('P07', '产品名称,用户工号,权限名称,用户名称,人员类别,是否雇员\n交易经营产品,' + row + '\n交易经营产品,' + row + '\n')
         assert idless['status'] == 'VALIDATED', idless
         request('/api/drafts/' + idless['draftId'] + '/publish', 'POST', {'reason': '完整导入无ID明细', 'allowEmpty': False}, {'If-Match': '1', 'Idempotency-Key': str(uuid.uuid4())})
         sid = request('/api/snapshots', 'POST')['id']
@@ -193,18 +197,25 @@ with tempfile.TemporaryDirectory(prefix='finance-review-release-') as temporary:
         assert idless_rows['total'] == 2
         assert len({r['id'] for r in idless_rows['rows']}) == 2
         assert all(not r['authorizationId'] for r in idless_rows['rows'])
-        duplicate = upload_csv('P08', '用户工号,权限名称,授权记录ID\nL00666785,角色,00001\nL00766785,其他角色,00001\n')
+        duplicate = upload_csv('P08', '产品名称,用户工号,权限名称,授权记录ID\n资金收付安全产品,L00666785,角色,00001\n资金收付安全产品,L00766785,其他角色,00001\n')
         assert duplicate['status'] == 'FAILED', duplicate
+        for csv_text in (
+            '产品名称,权限组合ID,角色名称,权限集名称,权限点ID\n财经法务产品,C1,角色,集,00001\n',
+            '权限组合ID,角色名称,权限集名称,权限点ID\nC1,角色,集,00001\n',
+            '产品名称,角色名称,权限集名称,权限点ID\n资金收付安全产品,角色,集,00001\n',
+        ):
+            rejected = upload_csv('P08', csv_text)
+            assert rejected['status'] == 'FAILED' and rejected['draftId'] is None, rejected
         paired = upload_file('P09', report_without_risk_scope(), 'missing-scope.xlsx')
         assert paired['status'] == 'VALIDATED', paired
         request('/api/drafts/' + paired['draftId'] + '/publish', 'POST', {'reason': '缺少来源列仍唯一关联', 'allowEmpty': False}, {'If-Match': '1', 'Idempotency-Key': str(uuid.uuid4())})
         sid = request('/api/snapshots', 'POST')['id']
         for kind in ('user', 'matrix'):
             findings = request('/api/findings/query', 'POST', {**q, 'snapshotId': sid, 'productId': 'P09', 'kind': kind})
-            assert all(r['linkStatus'] == 'LINKED_WEAK' for r in findings['rows'])
+            assert all(r['linkStatus'] == 'LINKED' for r in findings['rows'])
             trace = request('/api/findings/' + findings['rows'][0]['id'] + '?snapshotId=' + sid)
             assert trace['raw'] and trace['auditedRaw']
-        error_csv = '角色名称,权限集名称,权限点ID\n' + '角色,权限集,000001\n' * 1210
+        error_csv = '产品名称,权限组合ID,角色名称,权限集名称,权限点ID\n' + '财经预算预测产品,C1,角色,权限集,000001\n' * 1210
         error_job = upload_csv('P10', error_csv)
         assert error_job['status'] == 'FAILED', error_job
         assert error_job['errors']['count'] == 1209 and len(error_job['errors']['items']) == 100
@@ -255,7 +266,13 @@ with tempfile.TemporaryDirectory(prefix='finance-review-release-') as temporary:
                 raise AssertionError('Invalid API token accepted')
             except urllib.error.HTTPError as error:
                 assert error.code == 401
-            job = cli('upload-json', str(ROOT / 'examples/接口上传_双业务ID.json'), '--wait')
+            payload = json.loads((ROOT / 'examples/接口上传_双业务ID.json').read_text())
+            for dataset in payload['datasets']:
+                for row in dataset['rows']:
+                    row['productName'] = '财经助手产品'
+            payload_file = folder / 'api-p13.json'
+            payload_file.write_text(json.dumps(payload, ensure_ascii=False))
+            job = cli('upload-json', str(payload_file), '--wait')
             assert job['status'] == 'VALIDATED', job
             published = cli('publish', '--draft', job['draftId'], '--reason', '验证机器身份上传与发布')
             snap = machine('/snapshots', 'POST', {})['id']
@@ -277,7 +294,7 @@ with tempfile.TemporaryDirectory(prefix='finance-review-release-') as temporary:
                 assert error.code == 404
             # File uploads use the same server-to-server surface; duplicates retain full errors.
             invalid = folder / 'duplicate.csv'
-            invalid.write_text('权限组合ID,角色名称,权限集名称,权限点ID\nSAME,角色,权限集,00001\nSAME,角色,权限集,00001\n')
+            invalid.write_text('产品名称,权限组合ID,角色名称,权限集名称,权限点ID\n财经助手产品,SAME,角色,权限集,00001\n财经助手产品,SAME,角色,权限集,00001\n')
             failed = cli('upload-file', str(invalid), '--source-as-of', '2026-10-20T10:00:00+08:00', '--raw-coverage', 'FULL', '--wait')
             assert failed['status'] == 'FAILED' and failed['errors']['count'] == 1
             errors = machine('/import-jobs/' + failed['id'] + '/errors/page')
@@ -294,4 +311,4 @@ with tempfile.TemporaryDirectory(prefix='finance-review-release-') as temporary:
         assert request('/api/source-records/query', 'POST', {**q, 'snapshotId': snapshot, 'productId': 'P07'})['total'] == 2
     finally:
         stop(process, log)
-    print(json.dumps({'contextPath': CONTEXT or '/', 'integration_client': 'passed' if VERIFY_INTEGRATION else 'not-run', 'packaged_http_flow': 'passed', 'login_csrf': 'passed', 'multipart_upload': 'passed', 'publication_snapshot': 'passed', 'source_recheck': 'passed', 'restart_persistence': 'passed', 'idless_complete_import': 'passed', 'strong_duplicate_rejected': 'passed', 'both_status_chains': 'passed', 'risk_reasons_preserved': 'passed', 'task_list_200': 'passed', 'weak_scope_association': 'passed', 'full_error_csv_pagination': 'passed', 'version_diff': 'passed', 'check_item_distribution': 'passed', 'example_records': {'authorizations': 3, 'user_risks': 3, 'matrix_risks': 1}}))
+    print(json.dumps({'contextPath': CONTEXT or '/', 'integration_client': 'passed' if VERIFY_INTEGRATION else 'not-run', 'packaged_http_flow': 'passed', 'login_csrf': 'passed', 'multipart_upload': 'passed', 'publication_snapshot': 'passed', 'source_recheck': 'passed', 'restart_persistence': 'passed', 'idless_complete_import': 'passed', 'strong_duplicate_rejected': 'passed', 'both_status_chains': 'passed', 'risk_reasons_preserved': 'passed', 'task_list_200': 'passed', 'business_id_association': 'passed', 'product_name_validation': 'passed', 'full_error_csv_pagination': 'passed', 'version_diff': 'passed', 'check_item_distribution': 'passed', 'example_records': {'authorizations': 3, 'user_risks': 3, 'matrix_risks': 1}}))

@@ -55,7 +55,7 @@ public class IngestionService {
   }catch(Exception e){org.slf4j.LoggerFactory.getLogger(IngestionService.class).error("error report for import {} failed",j.get("id"),e);db.update("UPDATE import_job SET status='FAILED',phase='FAILED',progress=100,errors=:e WHERE id=:id AND lease_owner=:l AND status='RUNNING'",map("e",db.encode(map("count",1,"items",List.of(map("sheet","","row",0,"message","错误明细文件保存失败，请检查共享存储并重试")),"complete",false)),"id",j.get("id"),"l",lease));}
  }
  private void fail(Map<String,Object> job,String lease,Map<String,Object> errors,Map<String,Object> preview){db.update("UPDATE import_job SET status='FAILED',phase='FAILED',progress=100,errors=:e,preview=:p WHERE id=:id AND lease_owner=:l AND status='RUNNING'",map("e",db.encode(errors),"p",db.encode(preview),"id",job.get("id"),"l",lease));}
- public List<Map<String,Object>> linkSummary(String dataset){return db.rows("SELECT link_status,COALESCE(link_reason,'LEGACY_NOT_DIAGNOSED') AS link_reason,COUNT(*) AS count FROM risk_finding WHERE dataset_id=:d GROUP BY link_status,link_reason ORDER BY link_status,link_reason",map("d",dataset));}
+ public List<Map<String,Object>> linkSummary(String dataset){return db.rows("SELECT link_status,COALESCE(link_reason,'NOT_DIAGNOSED') AS link_reason,COUNT(*) AS count FROM risk_finding WHERE dataset_id=:d GROUP BY link_status,link_reason ORDER BY link_status,link_reason",map("d",dataset));}
  void relink(String dataset,String chain,boolean newRisk){
   var sources=db.rows("SELECT * FROM "+Fields.sourceTable(chain)+" WHERE dataset_id=:id",Map.of("id",dataset));
   var linker=new FindingLinker(sources,chain);Map<String,Map<String,Object>> sourceById=new HashMap<>();for(var source:sources)sourceById.put(str(source,"id"),source);

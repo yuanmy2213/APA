@@ -1,18 +1,18 @@
 {
-  "version": "1.3.0",
-  "date": "2026-10-20T03:38:27.466721+00:00",
-  "baseCommit": "1921d07aeb66cb9b55cccac8cd7559d1065cd3d0",
+  "version": "1.4.0",
+  "date": "2026-10-20T04:06:19.143947+00:00",
+  "baseCommit": "bdda45034da58410d13cf58ccb09e1eb3b3d4370",
   "javaSuites": [
     {
-      "name": "cn.finance.review.MigrationCompatibilityTest",
-      "tests": 2,
+      "name": "cn.finance.review.FirstDeploymentSchemaTest",
+      "tests": 1,
       "failures": 0,
       "errors": 0,
       "skipped": 0
     },
     {
       "name": "cn.finance.review.October20IntegrationTest",
-      "tests": 8,
+      "tests": 12,
       "failures": 0,
       "errors": 0,
       "skipped": 0
@@ -26,12 +26,23 @@
     }
   ],
   "domScripts": 5,
+  "contract": {
+    "productNameRequired": true,
+    "templateProductDropdown": 18,
+    "pointBusinessIdRequired": true,
+    "userRiskAuthorizationIdRequired": true,
+    "idlessRawRowsPreserved": true,
+    "nameFallbackRemoved": true,
+    "legacyIdGenerationRemoved": true,
+    "initScripts": 1,
+    "historicalDbMigration": "not-supported; fresh database required"
+  },
   "performance": {
     "sources": 4000,
     "findings": 1000,
     "individualInserts": 0,
     "jdbcBatchCalls": 14,
-    "cloneMs": 218.272448,
+    "cloneMs": 146.595714,
     "pageRows": [
       1,
       100
@@ -42,6 +53,14 @@
     ],
     "editorInputs": 24,
     "appRenderCount": 1
+  },
+  "syntheticScale": {
+    "authorizations": 7367,
+    "userRisks": 284,
+    "permissionPoints": 17505,
+    "matrixRisks": 810,
+    "linkedRisks": 1094,
+    "elapsedSeconds": 7.309195427
   },
   "http": [
     {
@@ -58,7 +77,8 @@
       "both_status_chains": "passed",
       "risk_reasons_preserved": "passed",
       "task_list_200": "passed",
-      "weak_scope_association": "passed",
+      "business_id_association": "passed",
+      "product_name_validation": "passed",
       "full_error_csv_pagination": "passed",
       "version_diff": "passed",
       "check_item_distribution": "passed",
@@ -82,7 +102,8 @@
       "both_status_chains": "passed",
       "risk_reasons_preserved": "passed",
       "task_list_200": "passed",
-      "weak_scope_association": "passed",
+      "business_id_association": "passed",
+      "product_name_validation": "passed",
       "full_error_csv_pagination": "passed",
       "version_diff": "passed",
       "check_item_distribution": "passed",
@@ -95,9 +116,10 @@
   ],
   "startupPrefixCases": 3,
   "openapiPaths": 15,
-  "jarSha256": "d105d160bb7a5541263295fa3e9e839765f1213d91a7df88d772f506fd1aecd7",
+  "jarSha256": "96a39d3b30b5f5d8630b9c9a8c47591e0ac5ed1b79914155c38d6a3a175eb6f8",
   "limits": [
     "未执行目标浏览器FPS与真实企业网络性能测试",
-    "未执行生产PostgreSQL、企业统一认证、真实业务报告或生产备份恢复验收"
+    "未执行生产PostgreSQL、企业统一认证、真实业务报告或生产备份恢复验收",
+    "历史测试库不升级；需新建空库并重新导入本版文件"
   ]
 }

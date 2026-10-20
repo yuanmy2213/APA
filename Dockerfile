@@ -6,7 +6,7 @@ COPY server ./server
 RUN mvn -B -DskipTests package
 FROM eclipse-temurin:17-jre
 WORKDIR /app
-COPY --from=build /src/target/finance-access-review-1.3.0.jar /app/review.jar
+COPY --from=build /src/target/finance-access-review-1.4.0.jar /app/review.jar
 ENV BIND_ADDRESS=0.0.0.0
 EXPOSE 8080
 ENTRYPOINT ["java","-Xms128m","-Xmx1g","-jar","/app/review.jar","--spring.profiles.active=prod"]

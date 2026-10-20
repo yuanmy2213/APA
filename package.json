@@ -1,6 +1,6 @@
 {
   "name": "finance-access-review",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "private": true,
   "type": "module",
   "description": "财经权限审查报告系统一期：Vue + Java",
